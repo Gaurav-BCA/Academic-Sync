@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 import { 
   ShieldCheck, 
-  TrendingUp, 
-  AlertTriangle, 
-  Clock, 
   MapPin, 
   Radio, 
   Sliders, 
-  Layers, 
-  CheckCircle2, 
-  HelpCircle,
-  Award
+  ChevronDown,
+  ChevronUp,
+  Info,
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -27,10 +25,68 @@ interface DashboardScreenProps {
   onOpenVotingModal: () => void;
 }
 
+// SVG Circular Donut Attendance Meter Component
+const HeroCircularMeter: React.FC<{ percentage: number; size?: number }> = ({ percentage, size = 140 }) => {
+  const strokeWidth = 10;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  let strokeColor = 'url(#indigoVioletGradHero)';
+  if (percentage < 75) strokeColor = '#EF4444';
+  else if (percentage < 85) strokeColor = '#F59E0B';
+
+  return (
+    <div className="relative inline-flex items-center justify-center shrink-0">
+      <svg width={size} height={size} className="transform -rotate-90">
+        <defs>
+          <linearGradient id="indigoVioletGradHero" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#6366F1" />
+            <stop offset="100%" stopColor="#8B5CF6" />
+          </linearGradient>
+        </defs>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="#1E293B"
+          strokeWidth={strokeWidth}
+          fill="transparent"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          fill="transparent"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          className="transition-all duration-700 ease-out"
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span className="font-jakarta font-bold text-4xl text-white tnum tracking-tight">
+          {percentage}%
+        </span>
+        <span className="text-[10px] font-mono uppercase text-[#10B981] font-semibold tracking-wider">
+          Safe Zone
+        </span>
+      </div>
+    </div>
+  );
+};
+
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingModal }) => {
-  const [subjects, setSubjects] = useState<SubjectTelemetry[]>(INITIAL_SUBJECTS);
+  const [subjects] = useState<SubjectTelemetry[]>(INITIAL_SUBJECTS);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('cs601');
   const [skipCount, setSkipCount] = useState<number>(3);
+
+  // Progressive Disclosure State
+  const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null);
+  const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
+  const [showAdvancedTools, setShowAdvancedTools] = useState<boolean>(false);
 
   const selectedSubject = subjects.find(s => s.id === selectedSubjectId) || subjects[0];
 
@@ -58,394 +114,366 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
   const chartData = generateChartData();
 
   return (
-    <div className="space-y-6 py-4">
+    <div className="space-y-10 py-6 max-w-[1280px] mx-auto">
       
-      {/* Top Banner Status */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono border-b border-slate-800 pb-3">
-        <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-slate-400">SYSTEM RUNTIME: CLUSTER-NODE // ACTIVE_INGESTION</span>
-          <span className="text-slate-600">|</span>
-          <span className="text-slate-400">POLL_INTERVAL: 450ms</span>
-        </div>
-        <div className="flex items-center space-x-2 text-slate-400">
-          <span>TELEMETRY CONSENSUS LOCK: 09:14:02 UTC</span>
-          <span className="text-emerald-400 flex items-center space-x-1">
-            <Radio className="w-3 h-3 animate-ping" />
-            <span>Online</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Top 3 Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        
-        {/* Metric 1: Total Attendance Vector */}
-        <div className="bg-[#121722] border border-slate-800 rounded-2xl p-5 space-y-3 relative overflow-hidden">
-          <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>SYSTEM TELEMETRY // METRIC-01</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div>
-            <p className="text-xs font-mono text-slate-400 uppercase">Total Attendance Vector</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-4xl font-extrabold font-mono text-white">81.4%</span>
-              <span className="text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
-                +1.4% EST
-              </span>
+      {/* 1. HERO ATTENDANCE CARD — Dominant Single Metric */}
+      <section className="stealth-card p-6 md:p-8 relative overflow-hidden">
+        <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
+          
+          {/* Left: Overall Status Headline & Actionable Forecast */}
+          <div className="space-y-3 text-center md:text-left flex-1">
+            <div className="inline-flex items-center space-x-2 bg-[#10B981]/10 border border-[#10B981]/30 px-3 py-1 rounded text-xs font-mono text-[#10B981]">
+              <span className="radar-dot" />
+              <span className="tnum font-semibold">ATTENDANCE HEALTH: OPTIMAL</span>
             </div>
-            <p className="text-[11px] font-mono text-slate-500 mt-1">
-              Threshold benchmark: 75.0% (114 / 140 sync units)
-            </p>
-          </div>
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono">
-            <span className="text-emerald-400 font-semibold">HEALTH STATUS: NOMINAL</span>
-            <span className="text-slate-400">CONFIDENCE 99.8%</span>
-          </div>
-        </div>
 
-        {/* Metric 2: Risk Buffer Allocation */}
-        <div className="bg-[#121722] border border-slate-800 rounded-2xl p-5 space-y-3 relative overflow-hidden">
-          <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>RISK BUFFER ALLOCATION</span>
-            <TrendingUp className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div>
-            <p className="text-xs font-mono text-slate-400 uppercase">Permissible Margin</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-4xl font-extrabold font-mono text-white">5</span>
-              <span className="text-sm font-mono text-slate-300">Lectures</span>
+            <h1 className="text-3xl md:text-4xl font-jakarta font-bold text-white tracking-tight">
+              Overall Attendance: <span className="text-[#10B981] tnum">81.4%</span>
+            </h1>
+
+            <p className="text-base text-[#DFE2F1] leading-relaxed max-w-xl font-sans">
+              You are comfortably in the safe zone. You have <span className="font-bold text-[#6BD8CB] tnum">5 safe skips</span> remaining across all subjects before reaching the mandatory 75% limit.
+            </p>
+
+            <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono">
+              <button
+                onClick={onOpenVotingModal}
+                className="btn-primary px-4 py-2 text-xs font-mono uppercase flex items-center space-x-2"
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>Check In To Live Class</span>
+              </button>
             </div>
-            <p className="text-[11px] font-mono text-slate-500 mt-1">
-              Max safe cuts remaining before danger zone (&lt;75%)
-            </p>
           </div>
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono">
-            <span className="text-slate-400">Recommended tactical buffer:</span>
-            <span className="text-cyan-400 font-bold">2 Cycles</span>
+
+          {/* Right: Large Hero Meter */}
+          <HeroCircularMeter percentage={81.4} size={150} />
+
+        </div>
+      </section>
+
+      {/* 2. TODAY'S SCHEDULE — Simplified Vertical List with Progressive Disclosure */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between border-b border-[#233044] pb-3">
+          <div className="flex items-center space-x-2">
+            <Calendar className="w-5 h-5 text-[#6366F1]" />
+            <h2 className="text-xl font-jakarta font-bold text-white">Today's Schedule</h2>
+            <span className="text-xs font-mono text-[#94A3B8]">• Monday, Oct 27</span>
           </div>
+          <span className="text-xs font-mono text-[#64748B]">4 Classes Scheduled</span>
         </div>
 
-        {/* Metric 3: Next Ingestion */}
-        <div className="bg-[#121722] border border-slate-800 rounded-2xl p-5 space-y-3 relative overflow-hidden">
-          <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>NEXT SCHEDULED INGESTION</span>
-            <span className="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded text-[10px] text-slate-300 font-mono">
-              CS601
-            </span>
-          </div>
+        <div className="space-y-3">
+          {TODAY_SEQUENCE.map((item) => {
+            const isExpanded = expandedScheduleId === item.id;
+            return (
+              <div 
+                key={item.id}
+                className="stealth-card p-4 transition-all hover:border-[#3E506B]"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  {/* Class Info */}
+                  <div className="flex items-center space-x-4">
+                    <div className="text-xs font-mono text-[#94A3B8] w-20 shrink-0 tnum">
+                      {item.time.split('-')[0].trim()}
+                    </div>
+                    <div>
+                      <h3 className="font-jakarta font-semibold text-white text-base">
+                        {item.subjectName} <span className="text-xs font-mono text-[#94A3B8]">({item.subjectCode})</span>
+                      </h3>
+                      <p className="text-xs text-[#94A3B8] font-mono">
+                        📍 {item.room} • {item.faculty}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Pill & Expand Details Toggle */}
+                  <div className="flex items-center space-x-3">
+                    <span className={`text-xs font-mono px-3 py-1 rounded font-semibold border ${
+                      item.status === 'conducted_gps' || item.status === 'conducted_consensus'
+                        ? 'bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]'
+                        : item.status === 'awaiting_check'
+                        ? 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B]'
+                        : 'bg-[#161F30] border-[#233044] text-[#94A3B8]'
+                    }`}>
+                      {item.status === 'conducted_gps' || item.status === 'conducted_consensus' 
+                        ? 'Conducted' 
+                        : item.status === 'awaiting_check' 
+                        ? 'Awaiting Check' 
+                        : 'Upcoming'}
+                    </span>
+
+                    <button
+                      onClick={() => setExpandedScheduleId(isExpanded ? null : item.id)}
+                      className="text-[#94A3B8] hover:text-white p-1 rounded hover:bg-[#161F30] transition-colors"
+                      title="Toggle technical details"
+                    >
+                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Progressive Disclosure: Hidden Technical Details */}
+                {isExpanded && (
+                  <div className="mt-3 pt-3 border-t border-[#233044] text-xs font-mono text-[#94A3B8] flex flex-wrap items-center justify-between gap-2 bg-[#161F30] p-3 rounded">
+                    <div>
+                      <span className="text-[#64748B] uppercase block text-[10px]">Verification Engine:</span>
+                      <span className="text-[#DFE2F1]">{item.statusText}</span>
+                    </div>
+                    {item.subText && (
+                      <div>
+                        <span className="text-[#64748B] uppercase block text-[10px]">Node Metadata:</span>
+                        <span className="text-[#6BD8CB] tnum">{item.subText}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={onOpenVotingModal}
+                      className="btn-stealth px-2.5 py-1 text-[10px] uppercase font-mono"
+                    >
+                      Open Live Check Modal
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 3. SUBJECT ATTENDANCE CARDS — Clean 2x2 Grid with Progressive Disclosure */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between border-b border-[#233044] pb-3">
           <div>
-            <p className="text-xs font-mono text-emerald-400 flex items-center space-x-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-              <span>Starts in 24m 10s</span>
-            </p>
-            <h3 className="text-lg font-bold text-white mt-1">Distributed Systems</h3>
-            <p className="text-xs text-slate-400 flex items-center space-x-2 mt-1">
-              <span>📍 LH-302</span>
-              <span>•</span>
-              <span>👨‍🏫 Dr. R. Sharma</span>
-            </p>
-          </div>
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono">
-            <span className="text-cyan-400 flex items-center space-x-1">
-              <MapPin className="w-3 h-3" />
-              <span>GPS Beacon Ready</span>
-            </span>
-            <button 
-              onClick={onOpenVotingModal}
-              className="bg-cyan-950 border border-cyan-800 text-cyan-300 hover:bg-cyan-900 px-2.5 py-0.5 rounded text-[10px]"
-            >
-              AUTO-SYNC ON
-            </button>
+            <h2 className="text-xl font-jakarta font-bold text-white">Subject Attendance</h2>
+            <p className="text-xs text-[#94A3B8] font-mono">Current Semester Courses</p>
           </div>
         </div>
 
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {subjects.map((sub) => {
+            const isCardExpanded = expandedSubjectId === sub.id;
+            return (
+              <div 
+                key={sub.id}
+                className={`stealth-card p-5 space-y-4 ${
+                  sub.status === 'critical' 
+                    ? 'border-[#EF4444]/40' 
+                    : sub.status === 'warning'
+                    ? 'border-[#F59E0B]/40'
+                    : ''
+                }`}
+              >
+                {/* Header: Subject & Big Attendance % */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-xs font-mono text-[#94A3B8]">{sub.code}</span>
+                    <h3 className="text-lg font-jakarta font-bold text-white mt-0.5">{sub.name}</h3>
+                  </div>
 
-      {/* Middle Grid: Timeline (Left) & Simulator + Trust Network (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Timeline: Daily Sequence */}
-        <div className="lg:col-span-6 bg-[#121722] border border-slate-800 rounded-2xl p-6 space-y-6">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-            <div>
-              <span className="text-[10px] font-mono text-slate-500 uppercase">SYNC CHRONO STREAM</span>
-              <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                <span>Daily Sequence</span>
-                <span className="text-slate-500 font-normal">• Monday, Oct 27</span>
-              </h2>
-            </div>
-            <span className="bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg text-xs font-mono text-slate-400">
-              🔒 Fully Automated Ledger
-            </span>
-          </div>
+                  <div className="text-right">
+                    <span className={`text-3xl font-jakarta font-bold tnum ${
+                      sub.status === 'critical' ? 'text-[#EF4444]' : sub.status === 'warning' ? 'text-[#F59E0B]' : 'text-[#10B981]'
+                    }`}>
+                      {sub.percentage}%
+                    </span>
+                  </div>
+                </div>
 
-          <div className="space-y-6 relative before:absolute before:inset-0 before:left-3 before:w-0.5 before:bg-slate-800">
-            {TODAY_SEQUENCE.map((item) => (
-              <div key={item.id} className="relative pl-8 space-y-1 group">
-                {/* Timeline dot */}
-                <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 bg-[#121722] -translate-x-1/2 ${
-                  item.status === 'conducted_gps'
-                    ? 'border-emerald-400 bg-emerald-400'
-                    : item.status === 'conducted_consensus'
-                    ? 'border-cyan-400 bg-cyan-400'
-                    : item.status === 'awaiting_check'
-                    ? 'border-amber-400 bg-amber-400 animate-pulse'
-                    : 'border-slate-600'
-                }`} />
+                {/* Progress Bar */}
+                <div className="space-y-1">
+                  <div className="w-full h-2 bg-[#0F131D] rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        sub.status === 'critical' 
+                          ? 'bg-[#EF4444]' 
+                          : sub.status === 'warning' 
+                          ? 'bg-[#F59E0B]' 
+                          : 'bg-gradient-to-r from-[#6366F1] to-[#8B5CF6]'
+                      }`}
+                      style={{ width: `${sub.percentage}%` }}
+                    />
+                  </div>
+                </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono text-slate-400">{item.time} • {item.room}</span>
-                  <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full border ${
-                    item.status === 'conducted_gps' || item.status === 'conducted_consensus'
-                      ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
-                      : item.status === 'awaiting_check'
-                      ? 'bg-purple-950/60 border-purple-500/40 text-purple-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-400'
+                {/* Plain Forecast Line */}
+                <div className="flex items-center justify-between text-xs font-mono pt-1">
+                  <span className={`font-semibold ${
+                    sub.status === 'critical' 
+                      ? 'text-[#EF4444]' 
+                      : sub.status === 'warning' 
+                      ? 'text-[#F59E0B]' 
+                      : 'text-[#10B981]'
                   }`}>
-                    {item.statusText}
+                    {sub.actionableNote}
+                  </span>
+
+                  <button
+                    onClick={() => setExpandedSubjectId(isCardExpanded ? null : sub.id)}
+                    className="text-[#94A3B8] hover:text-white flex items-center space-x-1 text-[11px] hover:underline"
+                  >
+                    <span>{isCardExpanded ? 'Hide Details' : 'Details'}</span>
+                    {isCardExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                </div>
+
+                {/* Progressive Disclosure: Expanded Technical Card Details */}
+                {isCardExpanded && (
+                  <div className="pt-3 border-t border-[#233044] text-xs font-mono space-y-2 bg-[#161F30] p-3 rounded">
+                    <div className="flex justify-between text-[#DFE2F1]">
+                      <span>Classes Attended:</span>
+                      <span className="font-bold tnum">{sub.attended} / {sub.total} Total</span>
+                    </div>
+                    <div className="flex justify-between text-[#DFE2F1]">
+                      <span>Course Instructor:</span>
+                      <span>{sub.faculty} ({sub.credits} Credits)</span>
+                    </div>
+                    <div className="flex justify-between text-[#6BD8CB]">
+                      <span>Buffer Headroom:</span>
+                      <span className="tnum font-bold">{sub.bufferHeadroom}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 4. COLLAPSIBLE ADVANCED TOOLS & SIMULATORS */}
+      <section className="stealth-card p-5 space-y-4">
+        <button
+          onClick={() => setShowAdvancedTools(!showAdvancedTools)}
+          className="w-full flex items-center justify-between text-left focus:outline-none"
+        >
+          <div className="flex items-center space-x-2">
+            <Sliders className="w-5 h-5 text-[#6366F1]" />
+            <div>
+              <h2 className="text-lg font-jakarta font-bold text-white">Advanced Tools & Simulators</h2>
+              <p className="text-xs text-[#94A3B8] font-mono">What-If Skip Simulator & Quorum Trust Matrix</p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 btn-stealth px-3 py-1.5 text-xs font-mono">
+            <span>{showAdvancedTools ? 'Collapse Simulators' : 'Expand Simulators'}</span>
+            {showAdvancedTools ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
+        </button>
+
+        {showAdvancedTools && (
+          <div className="pt-4 border-t border-[#233044] grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* What-If Simulator Card */}
+            <div className="lg:col-span-6 space-y-4 bg-[#161F30] p-5 rounded border border-[#233044]">
+              <div className="flex items-center justify-between border-b border-[#233044] pb-2">
+                <h3 className="font-jakarta font-bold text-white text-sm">"What-If" Skip Simulator</h3>
+                <span className="text-[10px] font-mono text-[#6BD8CB] uppercase">Predictive Model</span>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono text-[#94A3B8]">Select Subject</label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => setSelectedSubjectId(e.target.value)}
+                  className="input-stealth w-full font-mono text-xs"
+                >
+                  {subjects.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name} ({sub.code}) — Current: {sub.percentage}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-[#94A3B8]">Simulate Skipping</span>
+                  <span className="text-[#6BD8CB] font-bold text-xs bg-[#1A2438] border border-[#233044] px-2.5 py-0.5 rounded tnum">
+                    {skipCount} {skipCount === 1 ? 'Class' : 'Classes'}
+                  </span>
+                </div>
+                
+                <input
+                  type="range"
+                  min="0"
+                  max="6"
+                  step="1"
+                  value={skipCount}
+                  onChange={(e) => setSkipCount(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-[#1A2438] rounded appearance-none cursor-pointer accent-[#6366F1]"
+                />
+              </div>
+
+              {/* Chart */}
+              <div className="h-28 w-full pt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorPctSim" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={isProjectedSafe ? "#6366F1" : "#EF4444"} stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor={isProjectedSafe ? "#6366F1" : "#EF4444"} stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="cuts" tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }} />
+                    <YAxis domain={[60, 100]} tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#1E293B', borderColor: '#334155', borderRadius: '4px', fontSize: '11px', color: '#DFE2F1' }}
+                      itemStyle={{ color: '#6BD8CB' }}
+                    />
+                    <ReferenceLine y={75} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '75% MIN', fill: '#F59E0B', fontSize: 9 }} />
+                    <Area 
+                      type="monotone" 
+                      dataKey="percentage" 
+                      stroke={isProjectedSafe ? "#6366F1" : "#EF4444"} 
+                      strokeWidth={2} 
+                      fillOpacity={1} 
+                      fill="url(#colorPctSim)" 
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className={`p-2.5 rounded border flex items-center justify-between font-mono text-xs ${
+                isProjectedSafe 
+                  ? 'bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]' 
+                  : 'bg-[#EF4444]/10 border-[#EF4444]/30 text-[#EF4444]'
+              }`}>
+                <span>Projected Attendance:</span>
+                <span className="font-bold tnum">{selectedSubject.percentage}% → {projectedPercentage}%</span>
+              </div>
+            </div>
+
+            {/* Trust Network */}
+            <div className="lg:col-span-6 space-y-4 bg-[#161F30] p-5 rounded border border-[#233044] flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-[#233044] pb-2">
+                  <h3 className="font-jakarta font-bold text-white text-sm">Trust & Quorum Network</h3>
+                  <ShieldCheck className="w-4 h-4 text-[#10B981]" />
+                </div>
+
+                <div className="mt-4 flex items-baseline justify-between">
+                  <div>
+                    <span className="text-3xl font-jakarta font-bold text-white tnum">98.2</span>
+                    <span className="text-[#64748B] font-mono text-xs tnum"> / 100 TRUST SCORE</span>
+                  </div>
+                  <span className="text-xs font-mono text-[#10B981] bg-[#10B981]/10 border border-[#10B981]/30 px-2 py-0.5 rounded tnum">
+                    Top 5% Reliability
                   </span>
                 </div>
 
-                <h4 className="font-bold text-white text-sm">{item.subjectName} ({item.subjectCode})</h4>
-                <p className="text-xs text-slate-400">{item.faculty}</p>
-                {item.subText && (
-                  <p className="text-[11px] font-mono text-slate-500 pt-0.5">{item.subText}</p>
-                )}
+                <p className="text-xs text-[#94A3B8] leading-relaxed mt-3 font-sans">
+                  Your client node has maintained zero presence discrepancies across 64 consecutive class cycles, providing high consensus weight during group check-ins.
+                </p>
               </div>
-            ))}
+
+              <div className="pt-3 border-t border-[#233044] flex items-center justify-between text-xs font-mono text-[#64748B] tnum">
+                <span>VERIFIED ATTESTATIONS: 382</span>
+                <span>DISPUTES: 0</span>
+              </div>
+            </div>
+
           </div>
-
-          <div className="pt-4 border-t border-slate-800/80 text-[11px] font-mono text-slate-500 flex items-center space-x-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Zero Manual Tampering: Status updates are authenticated via peer mesh & geofenced beacons automatically.</span>
-          </div>
-        </div>
-
-        {/* Right Column: What-If Simulator + Trust Network */}
-        <div className="lg:col-span-6 space-y-6">
-          
-          {/* What-If Predictive Simulator Card */}
-          <div className="bg-[#121722] border border-cyan-900/30 rounded-2xl p-6 space-y-5 relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider">PREDICTIVE HEURISTIC MODELING</span>
-                <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                  <Sliders className="w-4 h-4 text-cyan-400" />
-                  <span>"What-If" Simulator</span>
-                </h2>
-              </div>
-            </div>
-
-            {/* Target Module Selector */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-mono text-slate-400">TARGET ACADEMIC MODULE</label>
-              <select
-                value={selectedSubjectId}
-                onChange={(e) => setSelectedSubjectId(e.target.value)}
-                className="w-full bg-[#0B0E14] border border-slate-800 text-xs font-mono text-white rounded-xl p-3 outline-none focus:border-cyan-500 transition-colors"
-              >
-                {subjects.map((sub) => (
-                  <option key={sub.id} value={sub.id}>
-                    {sub.name} ({sub.code}) — Current: {sub.percentage}%
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Skip Slider Control */}
-            <div className="space-y-2 pt-2">
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-slate-400 uppercase">SKIP NEXT N LECTURES</span>
-                <span className="text-cyan-400 font-bold text-sm bg-cyan-950/80 px-3 py-0.5 rounded-lg border border-cyan-800/60">
-                  {skipCount} {skipCount === 1 ? 'Lecture' : 'Lectures'}
-                </span>
-              </div>
-              
-              <input
-                type="range"
-                min="0"
-                max="6"
-                step="1"
-                value={skipCount}
-                onChange={(e) => setSkipCount(parseInt(e.target.value))}
-                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-              />
-              <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                <span>0 (No cut)</span>
-                <span>2</span>
-                <span>4</span>
-                <span>6 (High risk)</span>
-              </div>
-            </div>
-
-            {/* Recharts Area Curve */}
-            <div className="h-32 w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorPct" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={isProjectedSafe ? "#06B6D4" : "#EF4444"} stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor={isProjectedSafe ? "#06B6D4" : "#EF4444"} stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="cuts" tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }} />
-                  <YAxis domain={[60, 100]} tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0B0E14', borderColor: '#1E293B', borderRadius: '8px', fontSize: '11px' }}
-                    itemStyle={{ color: '#00F0FF' }}
-                  />
-                  <ReferenceLine y={75} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '75% THRESHOLD', fill: '#F59E0B', fontSize: 9 }} />
-                  <Area 
-                    type="monotone" 
-                    dataKey="percentage" 
-                    stroke={isProjectedSafe ? "#00F0FF" : "#EF4444"} 
-                    strokeWidth={2} 
-                    fillOpacity={1} 
-                    fill="url(#colorPct)" 
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Simulator Output Trajectory Badge */}
-            <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
-              isProjectedSafe 
-                ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300' 
-                : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
-            }`}>
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase">Projected Trajectory</span>
-                <span className="font-bold text-sm">
-                  {selectedSubject.percentage}% → {projectedPercentage}%
-                </span>
-              </div>
-              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-                isProjectedSafe ? 'bg-emerald-900/60 text-emerald-300' : 'bg-rose-900/60 text-rose-300'
-              }`}>
-                {isProjectedSafe ? 'SAFE (Above 75%)' : 'CRITICAL (Below 75%)'}
-              </span>
-            </div>
-
-            <p className="text-[10px] font-mono text-slate-500">
-              💡 Simulation only — calculated locally using live database vectors. Does not write mutations to your genuine ledger.
-            </p>
-          </div>
-
-          {/* Trust & Consensus Network Card */}
-          <div className="bg-[#121722] border border-slate-800 rounded-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-mono text-slate-500 uppercase">CONSENSUS INTEGRITY POOL</span>
-                <h3 className="text-base font-bold text-white">Trust & Consensus Network</h3>
-              </div>
-              <ShieldCheck className="w-5 h-5 text-emerald-400" />
-            </div>
-
-            <div className="flex items-baseline justify-between">
-              <div>
-                <span className="text-4xl font-extrabold font-mono text-white">98.2</span>
-                <span className="text-slate-500 font-mono text-sm"> / 100</span>
-              </div>
-              <span className="text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
-                📈 +2.4% vs last week
-              </span>
-            </div>
-
-            <div className="flex items-center space-x-2 text-xs font-mono">
-              <span className="bg-purple-950/80 border border-purple-800 text-purple-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-                TOP 5% RELIABILITY TIER
-              </span>
-              <span className="text-slate-400">Weight Multiplier: 1.42x</span>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-slate-400">
-              <span>TOTAL ATTESTATIONS: 382</span>
-              <span>DISPUTE RATE: 0.00%</span>
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* Bottom Section: Subject Telemetry Units Grid */}
-      <div className="space-y-4 pt-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-mono text-slate-500 uppercase">MODULE BREAKDOWN // ACTIVE SEMESTERS</span>
-            <h2 className="text-xl font-bold text-white">Subject Telemetry Units</h2>
-          </div>
-          <div className="flex items-center space-x-2 text-xs font-mono">
-            <span className="bg-slate-900 border border-slate-800 text-slate-400 px-3 py-1 rounded-lg">Filter: All Courses</span>
-            <span className="bg-slate-900 border border-slate-800 text-slate-400 px-3 py-1 rounded-lg">Sort: Margin ASC</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {subjects.map((sub) => (
-            <div 
-              key={sub.id}
-              className={`bg-[#121722] border rounded-2xl p-5 space-y-4 relative overflow-hidden transition-all hover:border-slate-700 ${
-                sub.status === 'critical' 
-                  ? 'border-rose-900/50 bg-rose-950/10' 
-                  : sub.status === 'warning'
-                  ? 'border-amber-900/50 bg-amber-950/10'
-                  : 'border-slate-800'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-mono text-slate-400">{sub.code}</span>
-                    <span className={`w-2 h-2 rounded-full ${
-                      sub.status === 'critical' ? 'bg-rose-500' : sub.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-400'
-                    }`} />
-                    <span className="text-[10px] font-mono uppercase text-slate-500">{sub.status}</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-white mt-1">{sub.name}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">{sub.credits} Credits • {sub.faculty}</p>
-                </div>
-
-                <div className="text-right font-mono">
-                  <div className="text-3xl font-extrabold text-white">{sub.percentage}%</div>
-                  <div className="text-[11px] text-slate-400">{sub.attended} / {sub.total} Attended</div>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="space-y-1">
-                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full ${
-                      sub.status === 'critical' ? 'bg-rose-500' : sub.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-400'
-                    }`}
-                    style={{ width: `${sub.percentage}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>0%</span>
-                  <span>75% Target: {Math.ceil(sub.total * 0.75)}/{sub.total}</span>
-                  <span>100%</span>
-                </div>
-              </div>
-
-              {/* Actionable Note Footer */}
-              <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-mono ${
-                sub.status === 'critical'
-                  ? 'bg-rose-950/60 border-rose-500/40 text-rose-300 font-bold'
-                  : sub.status === 'warning'
-                  ? 'bg-amber-950/60 border-amber-500/40 text-amber-300'
-                  : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-              }`}>
-                <span>{sub.actionableNote}</span>
-                <span className="text-[10px] opacity-80">Buffer: {sub.bufferHeadroom}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-      </div>
+        )}
+      </section>
 
     </div>
   );

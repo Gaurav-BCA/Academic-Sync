@@ -2,12 +2,13 @@ import React from 'react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="border-t border-gray-800/80 bg-[#0A0D13] py-4 px-6 text-xs text-slate-500 font-mono flex flex-col sm:flex-row justify-between items-center gap-2">
-      <div>
-        SEC-PROTO-V4 // HARDWARE TELEMETRY CONSENSUS LAYER
+    <footer className="border-t border-[#233044] bg-[#161F30] py-4 px-6 text-xs text-[#64748B] font-mono flex flex-col sm:flex-row justify-between items-center gap-2">
+      <div className="flex items-center space-x-2">
+        <span className="w-2 h-2 rounded-full bg-[#10B981] inline-block" />
+        <span className="tnum">SEC-PROTO-V4 // HARDWARE TELEMETRY CONSENSUS LAYER</span>
       </div>
-      <div>
-        © 2025 Academia-Sync Core. Encrypted Enterprise Gateway.
+      <div className="tnum">
+        © 2026 Academic-Sync Core. Encrypted Enterprise Telemetry Gateway.
       </div>
     </footer>
   );

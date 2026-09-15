@@ -7,23 +7,46 @@ export default {
   theme: {
     extend: {
       colors: {
+        stealth: {
+          canvas: "#0F131D",
+          container: "#161F30",
+          card: "#1A2438",
+          popover: "#1E293B",
+          border: "#233044",
+          "border-hover": "#3E506B",
+          text: "#DFE2F1",
+          "text-variant": "#C7C4D7",
+          muted: "#94A3B8",
+          subtle: "#64748B",
+          primary: "#6366F1",
+          secondary: "#8B5CF6",
+          teal: "#0D9488",
+          emerald: "#10B981",
+          amber: "#F59E0B",
+          crimson: "#EF4444",
+        },
         bg: {
-          dark: "#0B0E14",
-          card: "#121721",
-          elevated: "#18202D",
-          input: "#0F141E"
+          dark: "#0F131D",
+          card: "#1A2438",
+          container: "#161F30",
+          elevated: "#1A2438",
+          popover: "#1E293B",
+          input: "#161F30"
         },
         border: {
-          subtle: "#1F2937",
-          glow: "#374151"
+          subtle: "#233044",
+          glow: "#3E506B"
         },
-        cyan: {
-          telemetry: "#00F0FF",
-          accent: "#06B6D4"
+        indigo: {
+          accent: "#6366F1"
         },
         purple: {
           accent: "#8B5CF6",
-          dark: "#6D28D9"
+          dark: "#571BC1"
+        },
+        cyan: {
+          telemetry: "#6BD8CB",
+          accent: "#0D9488"
         },
         emerald: {
           safe: "#10B981"
@@ -36,8 +59,9 @@ export default {
         }
       },
       fontFamily: {
-        mono: ["JetBrains Mono", "Fira Code", "Courier New", "monospace"],
-        sans: ["Inter", "system-ui", "sans-serif"]
+        jakarta: ["Plus Jakarta Sans", "Inter", "sans-serif"],
+        sans: ["Inter", "system-ui", "sans-serif"],
+        mono: ["Inter", "Fira Code", "JetBrains Mono", "monospace"]
       }
     },
   },

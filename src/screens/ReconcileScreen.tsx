@@ -7,7 +7,6 @@ import {
   Upload, 
   Users, 
   FileText, 
-  Radio, 
   Calendar,
   Lock
 } from 'lucide-react';
@@ -35,13 +34,13 @@ export const ReconcileScreen: React.FC = () => {
     <div className="space-y-6 py-4">
       
       {/* Top Protocol Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#121722] border border-slate-800 rounded-2xl p-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 stealth-card p-5">
         <div>
-          <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider block mb-1">
+          <span className="text-[10px] font-mono text-[#6BD8CB] uppercase tracking-wider block mb-1 tnum">
             LEDGER PROTOCOL // EOD_CHECKPOINT_V3
           </span>
-          <h1 className="text-2xl font-extrabold text-white">Evening Reconciliation & Anomaly Resolution</h1>
-          <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+          <h1 className="text-xl font-jakarta font-bold text-white">Telemetry Reconciliation & Anomaly Audit</h1>
+          <p className="text-xs text-[#94A3B8] mt-1 max-w-2xl font-sans">
             Consensus ledger locks daily at 20:00 UTC. Review automated presence vectors and submit authorized offline exceptions before hardware batch finalization.
           </p>
         </div>
@@ -49,52 +48,50 @@ export const ReconcileScreen: React.FC = () => {
         <div className="flex items-center space-x-3 shrink-0">
           <button 
             onClick={handleFestBypass}
-            className={`px-4 py-2.5 rounded-xl font-mono text-xs border transition-all flex items-center space-x-2 ${
-              eventDayBypass 
-                ? 'bg-emerald-950 border-emerald-500 text-emerald-300' 
-                : 'bg-purple-950/60 border-purple-800/60 text-purple-300 hover:bg-purple-900/60'
+            className={`btn-stealth px-3 py-2 text-xs font-mono flex items-center space-x-2 ${
+              eventDayBypass ? 'border-[#10B981] text-[#10B981]' : ''
             }`}
           >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>{eventDayBypass ? 'Day Flagged as Event Override ✓' : 'Mark Day as Fest / Sports Bypass'}</span>
+            <Calendar className="w-3.5 h-3.5 text-[#8B5CF6]" />
+            <span className="tnum">{eventDayBypass ? 'Day Flagged as Event Override ✓' : 'Mark Day as Fest / Sports Bypass'}</span>
           </button>
 
-          <div className="bg-[#0B0E14] border border-slate-800 px-3 py-2 rounded-xl text-xs font-mono text-slate-400 flex items-center space-x-2">
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>LOCKOUT: 02h 14m 19s</span>
+          <div className="bg-[#161F30] border border-[#233044] px-3 py-2 rounded text-xs font-mono text-[#94A3B8] flex items-center space-x-2">
+            <Clock className="w-3.5 h-3.5 text-[#F59E0B]" />
+            <span className="tnum">LOCKOUT: 02h 14m 19s</span>
           </div>
         </div>
       </div>
 
       {/* Top 3 Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-[#121722] border border-slate-800 rounded-xl p-4 flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400">
-            <FileText className="w-5 h-5" />
+        <div className="stealth-card p-4 flex items-center space-x-3">
+          <div className="w-9 h-9 rounded bg-[#161F30] border border-[#233044] flex items-center justify-center text-[#94A3B8]">
+            <FileText className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-[10px] font-mono text-slate-500 uppercase">SYNCHRONIZED STREAMS</p>
-            <p className="text-2xl font-bold font-mono text-white">04 <span className="text-xs text-slate-400 font-normal">Classes Tracked Today</span></p>
+            <p className="text-[10px] font-mono text-[#64748B] uppercase">SYNCHRONIZED STREAMS</p>
+            <p className="text-xl font-jakarta font-bold text-white tnum">04 <span className="text-xs text-[#94A3B8] font-mono font-normal">Modules Tracked Today</span></p>
           </div>
         </div>
 
-        <div className="bg-[#121722] border border-slate-800 rounded-xl p-4 flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <CheckCircle2 className="w-5 h-5" />
+        <div className="stealth-card p-4 flex items-center space-x-3">
+          <div className="w-9 h-9 rounded bg-[#10B981]/10 border border-[#10B981]/30 flex items-center justify-center text-[#10B981]">
+            <CheckCircle2 className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-[10px] font-mono text-slate-500 uppercase">QUORUM STATE</p>
-            <p className="text-2xl font-bold font-mono text-white">03 <span className="text-xs text-slate-400 font-normal">Consensus Verified</span></p>
+            <p className="text-[10px] font-mono text-[#64748B] uppercase">QUORUM STATE</p>
+            <p className="text-xl font-jakarta font-bold text-white tnum">03 <span className="text-xs text-[#94A3B8] font-mono font-normal">Consensus Verified</span></p>
           </div>
         </div>
 
-        <div className="bg-[#121722] border border-slate-800 rounded-xl p-4 flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-950 border border-rose-500/30 flex items-center justify-center text-rose-400">
-            <AlertTriangle className="w-5 h-5" />
+        <div className="stealth-card p-4 flex items-center space-x-3">
+          <div className="w-9 h-9 rounded bg-[#EF4444]/10 border border-[#EF4444]/30 flex items-center justify-center text-[#EF4444]">
+            <AlertTriangle className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-[10px] font-mono text-slate-500 uppercase">TELEMETRY INCONGRUITY</p>
-            <p className="text-2xl font-bold font-mono text-rose-400">01 <span className="text-xs text-slate-400 font-normal">Anomaly Flagged</span></p>
+            <p className="text-[10px] font-mono text-[#64748B] uppercase">TELEMETRY INCONGRUITY</p>
+            <p className="text-xl font-jakarta font-bold text-[#EF4444] tnum">01 <span className="text-xs text-[#94A3B8] font-mono font-normal">Anomaly Flagged</span></p>
           </div>
         </div>
       </div>
@@ -103,11 +100,11 @@ export const ReconcileScreen: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Column: Today's Class Ledger Blocks */}
-        <div className="lg:col-span-6 bg-[#121722] border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="lg:col-span-6 stealth-card p-6 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[#233044]">
             <div>
-              <h3 className="font-bold text-white text-base">TODAY'S CLASS LEDGER BLOCKS</h3>
-              <p className="text-xs text-slate-500 font-mono">4 Records | AUTO-POLLING SYNC // ETH-0</p>
+              <h3 className="font-jakarta font-bold text-white text-base">TODAY'S TELEMETRY LEDGER BLOCKS</h3>
+              <p className="text-xs text-[#64748B] font-mono tnum">4 Records | AUTO-POLLING SYNC // ETH-0</p>
             </div>
           </div>
 
@@ -115,27 +112,27 @@ export const ReconcileScreen: React.FC = () => {
             {RECONCILIATION_LEDS.map((rec) => (
               <div 
                 key={rec.id}
-                className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
+                className={`p-4 rounded border flex items-center justify-between transition-colors ${
                   rec.status === 'flagged' && !submitted
-                    ? 'bg-rose-950/20 border-rose-500/40'
+                    ? 'bg-[#EF4444]/10 border-[#EF4444]/40'
                     : rec.status === 'exempted' || eventDayBypass
-                    ? 'bg-purple-950/20 border-purple-500/30'
-                    : 'bg-[#0B0E14] border-slate-800'
+                    ? 'bg-[#8B5CF6]/10 border-[#8B5CF6]/30'
+                    : 'bg-[#161F30] border-[#233044]'
                 }`}
               >
                 <div className="space-y-1">
-                  <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
+                  <div className="flex items-center space-x-2 text-xs font-mono text-[#94A3B8] tnum">
                     <span>{rec.time}</span>
                     <span>•</span>
-                    <span className="text-slate-300 font-bold">{rec.subjectCode}</span>
+                    <span className="text-white font-bold">{rec.subjectCode}</span>
                   </div>
-                  <h4 className="font-bold text-white text-sm">{rec.subjectName}</h4>
-                  <p className={`text-xs font-mono ${
+                  <h4 className="font-jakarta font-semibold text-white text-sm">{rec.subjectName}</h4>
+                  <p className={`text-xs font-mono tnum ${
                     rec.status === 'flagged' && !submitted
-                      ? 'text-rose-400 font-bold'
+                      ? 'text-[#EF4444] font-bold'
                       : eventDayBypass
-                      ? 'text-emerald-400 font-bold'
-                      : 'text-slate-400'
+                      ? 'text-[#10B981] font-bold'
+                      : 'text-[#94A3B8]'
                   }`}>
                     ● {eventDayBypass ? 'EVENT_OVERRIDE (Fest/Sports Bypass)' : submitted && rec.status === 'flagged' ? 'Reconciled via Peer Quorum Override ✓' : rec.statusText}
                   </p>
@@ -143,23 +140,23 @@ export const ReconcileScreen: React.FC = () => {
 
                 <div>
                   {rec.status === 'immutable' && (
-                    <span className="bg-slate-900 border border-slate-700 text-slate-400 px-3 py-1 rounded-lg text-xs font-mono flex items-center space-x-1">
-                      <Lock className="w-3 h-3 text-emerald-400" />
+                    <span className="bg-[#161F30] border border-[#233044] text-[#94A3B8] px-2.5 py-1 rounded text-xs font-mono flex items-center space-x-1 tnum">
+                      <Lock className="w-3 h-3 text-[#10B981]" />
                       <span>IMMUTABLE</span>
                     </span>
                   )}
                   {rec.status === 'exempted' && (
-                    <span className="bg-purple-950 border border-purple-800 text-purple-300 px-3 py-1 rounded-lg text-xs font-mono">
+                    <span className="bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 text-[#8B5CF6] px-2.5 py-1 rounded text-xs font-mono tnum">
                       EXEMPTED
                     </span>
                   )}
                   {rec.status === 'flagged' && !submitted && !eventDayBypass && (
-                    <button className="bg-indigo-600 hover:bg-indigo-500 text-white font-mono px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-600/20">
+                    <button className="btn-primary px-3 py-1.5 text-xs font-mono uppercase">
                       Reconcile Offline
                     </button>
                   )}
                   {rec.status === 'flagged' && submitted && (
-                    <span className="bg-emerald-950 border border-emerald-800 text-emerald-300 px-3 py-1 rounded-lg text-xs font-mono">
+                    <span className="bg-[#10B981]/20 border border-[#10B981]/40 text-[#10B981] px-2.5 py-1 rounded text-xs font-mono tnum">
                       RESOLVED ✓
                     </span>
                   )}
@@ -169,17 +166,17 @@ export const ReconcileScreen: React.FC = () => {
           </div>
 
           {/* Quorum Consensus Diagnostics Bar */}
-          <div className="pt-4 border-t border-slate-800 space-y-2">
+          <div className="pt-4 border-t border-[#233044] space-y-2">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-slate-400">QUORUM CONSENSUS DIAGNOSTICS</span>
-              <span className="text-emerald-400 font-bold">NODE VERIFICATION 98.2% MATCH</span>
+              <span className="text-[#94A3B8]">QUORUM CONSENSUS DIAGNOSTICS</span>
+              <span className="text-[#10B981] font-bold tnum">NODE VERIFICATION 98.2% MATCH</span>
             </div>
-            <div className="w-full h-1.5 bg-slate-800 rounded-full flex overflow-hidden">
-              <div className="w-[60%] bg-emerald-400" title="BLE Geofence Quorum (Pass)" />
-              <div className="w-[25%] bg-cyan-400" title="WiFi SSID MAC Handshake (Pass)" />
-              <div className="w-[15%] bg-rose-500" title="Telemetry Drop CS602" />
+            <div className="w-full h-1.5 bg-[#0F131D] rounded-full flex overflow-hidden">
+              <div className="w-[60%] bg-[#10B981]" title="BLE Geofence Quorum (Pass)" />
+              <div className="w-[25%] bg-[#6BD8CB]" title="WiFi SSID MAC Handshake (Pass)" />
+              <div className="w-[15%] bg-[#EF4444]" title="Telemetry Drop CS602" />
             </div>
-            <div className="flex justify-between text-[10px] font-mono text-slate-500 pt-1">
+            <div className="flex justify-between text-[10px] font-mono text-[#64748B] pt-1">
               <span>● BLE Geofence Quorum (Pass)</span>
               <span>● WiFi SSID MAC Handshake (Pass)</span>
               <span>● Telemetry Drop: CS602</span>
@@ -188,36 +185,36 @@ export const ReconcileScreen: React.FC = () => {
         </div>
 
         {/* Right Column: Active Resolution Ticket Panel */}
-        <div className="lg:col-span-6 bg-[#121722] border border-purple-900/40 rounded-2xl p-6 space-y-5">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="lg:col-span-6 stealth-card p-6 space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-[#233044]">
             <div>
-              <span className="text-[10px] font-mono text-rose-400 uppercase tracking-wider font-bold">ACTIVE RESOLUTION TICKET</span>
-              <h3 className="text-lg font-bold text-white">Computer Networks (CS602)</h3>
-              <p className="text-xs font-mono text-slate-500">SESSION ID: #ANOM-9024-NET</p>
+              <span className="text-[10px] font-mono text-[#EF4444] uppercase tracking-wider font-bold">ACTIVE RESOLUTION TICKET</span>
+              <h3 className="text-base font-jakarta font-bold text-white">Distributed Networks (CS602)</h3>
+              <p className="text-xs font-mono text-[#64748B] tnum">SESSION ID: #ANOM-9024-NET</p>
             </div>
-            <span className="bg-rose-950 border border-rose-800 text-rose-300 text-[10px] font-mono px-2.5 py-1 rounded-full font-bold">
+            <span className="bg-[#EF4444]/20 border border-[#EF4444]/40 text-[#EF4444] text-[10px] font-mono px-2.5 py-1 rounded font-bold uppercase tnum">
               NEEDS QUORUM
             </span>
           </div>
 
           {/* Telemetric Variance Analysis Box */}
-          <div className="bg-[#0B0E14] border border-slate-800 rounded-xl p-4 space-y-2">
-            <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span className="font-bold text-slate-300">Telemetric Variance Analysis</span>
+          <div className="bg-[#161F30] border border-[#233044] rounded p-4 space-y-2">
+            <div className="flex items-center space-x-2 text-xs font-mono text-[#94A3B8]">
+              <AlertTriangle className="w-4 h-4 text-[#F59E0B]" />
+              <span className="font-bold text-[#DFE2F1]">Telemetric Variance Analysis</span>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed font-sans">
-              Class held, but student marked absent due to device battery drainage / geofence drop. BLE beacon proximity lost between 11:34 AM and 12:10 PM UTC.
+            <p className="text-xs text-[#94A3B8] leading-relaxed font-sans">
+              Module executed, but node marked offline due to device battery drainage / geofence drop. BLE beacon proximity lost between 11:34 AM and 12:10 PM UTC.
             </p>
           </div>
 
           {/* Reason Selection */}
           <div className="space-y-1">
-            <label className="text-[10px] font-mono text-slate-400 uppercase">Institutional Exception Reason</label>
+            <label className="text-[10px] font-mono text-[#94A3B8] uppercase">Institutional Exception Reason</label>
             <select
               value={selectedReason}
               onChange={(e) => setSelectedReason(e.target.value)}
-              className="w-full bg-[#0B0E14] border border-slate-800 text-xs font-mono text-white rounded-xl p-3 outline-none focus:border-purple-500 transition-colors"
+              className="input-stealth w-full font-mono text-xs"
             >
               <option>Authorized Offline Duty (NSS / Placement Drive)</option>
               <option>Attendance Granted for College Fest Duty</option>
@@ -228,44 +225,44 @@ export const ReconcileScreen: React.FC = () => {
 
           {/* Verification Artifact Dropzone */}
           <div className="space-y-1">
-            <label className="text-[10px] font-mono text-slate-400 uppercase">Verification Artifact (Proof / Duty Slip)</label>
+            <label className="text-[10px] font-mono text-[#94A3B8] uppercase">Verification Artifact (Proof / Duty Slip)</label>
             <div 
               onClick={handleFileUpload}
-              className="border-2 border-dashed border-slate-800 hover:border-purple-500/50 bg-[#0B0E14] rounded-xl p-4 text-center cursor-pointer transition-all space-y-2"
+              className="border border-dashed border-[#233044] hover:border-[#6366F1] bg-[#161F30] rounded p-4 text-center cursor-pointer transition-colors space-y-2"
             >
-              <Upload className="w-6 h-6 mx-auto text-purple-400" />
+              <Upload className="w-5 h-5 mx-auto text-[#8B5CF6]" />
               {fileUploaded ? (
-                <p className="text-xs text-emerald-400 font-mono font-bold">✓ Attached: {fileUploaded}</p>
+                <p className="text-xs text-[#10B981] font-mono font-bold">✓ Attached: {fileUploaded}</p>
               ) : (
                 <>
-                  <p className="text-xs text-slate-300 font-medium">Upload duty requisition or medical pass</p>
-                  <p className="text-[10px] text-slate-500 font-mono">PDF, PNG, HEIC up to 10MB</p>
+                  <p className="text-xs text-[#DFE2F1] font-medium">Upload duty requisition or medical pass</p>
+                  <p className="text-[10px] text-[#64748B] font-mono">PDF, PNG, HEIC up to 10MB</p>
                 </>
               )}
             </div>
           </div>
 
           {/* Peer Signatures Attached */}
-          <div className="bg-[#0B0E14] border border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs font-mono">
-            <div className="flex items-center space-x-2 text-slate-300">
-              <Users className="w-4 h-4 text-purple-400" />
+          <div className="bg-[#161F30] border border-[#233044] rounded p-3 flex items-center justify-between text-xs font-mono">
+            <div className="flex items-center space-x-2 text-[#94A3B8]">
+              <Users className="w-4 h-4 text-[#8B5CF6]" />
               <span>Peer Signatures Attached:</span>
             </div>
-            <span className="text-emerald-400 font-bold">3/3 Bench Peers (Ready)</span>
+            <span className="text-[#10B981] font-bold tnum">3/3 Bench Peers (Ready)</span>
           </div>
 
           {/* Action Buttons */}
-          <div className="space-y-2 pt-2">
+          <div className="space-y-2 pt-1">
             <button
               onClick={handleSubmitProof}
               disabled={submitted}
-              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-purple-600/20 text-xs font-mono font-bold"
+              className="btn-primary w-full py-2.5 text-xs font-mono uppercase font-bold"
             >
               {submitted ? '✓ Peer Proof Submitted — Quorum Override Active' : 'Submit Peer Proof for Quorum Override'}
             </button>
             <button
               onClick={() => setSelectedReason('')}
-              className="w-full bg-[#0B0E14] hover:bg-slate-900 border border-slate-800 text-slate-400 py-2.5 rounded-xl text-xs font-mono transition-all"
+              className="btn-stealth w-full py-2 text-xs font-mono"
             >
               Cancel & Retain Ledger Status
             </button>
@@ -275,22 +272,22 @@ export const ReconcileScreen: React.FC = () => {
       </div>
 
       {/* Footer Security Notes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-800/80 text-xs font-mono text-slate-400">
-        <div className="flex items-start space-x-3 bg-[#121722] border border-slate-800 rounded-xl p-4">
-          <ShieldAlert className="w-5 h-5 text-cyan-400 shrink-0" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#233044] text-xs font-mono text-[#94A3B8]">
+        <div className="stealth-card p-4 flex items-start space-x-3">
+          <ShieldAlert className="w-5 h-5 text-[#6BD8CB] shrink-0" />
           <div>
-            <h4 className="font-bold text-white">Institutional Quorum Ruleset</h4>
-            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+            <h4 className="font-jakarta font-semibold text-white">Institutional Quorum Ruleset</h4>
+            <p className="text-[11px] text-[#64748B] mt-1 leading-relaxed">
               Section 14.3: Hardware proxy discrepancies must be attested with a minimum of 2 peer BLE consensus beacons active during the designated lecture cycle.
             </p>
           </div>
         </div>
 
-        <div className="flex items-start space-x-3 bg-[#121722] border border-slate-800 rounded-xl p-4">
-          <Lock className="w-5 h-5 text-purple-400 shrink-0" />
+        <div className="stealth-card p-4 flex items-start space-x-3">
+          <Lock className="w-5 h-5 text-[#8B5CF6] shrink-0" />
           <div>
-            <h4 className="font-bold text-white">Immutable Consensus Locks</h4>
-            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+            <h4 className="font-jakarta font-semibold text-white">Immutable Consensus Locks</h4>
+            <p className="text-[11px] text-[#64748B] mt-1 leading-relaxed">
               After 20:00 UTC daily, the class consensus state is signed with the faculty keypair. Offline exceptions cannot be submitted past this threshold.
             </p>
           </div>
