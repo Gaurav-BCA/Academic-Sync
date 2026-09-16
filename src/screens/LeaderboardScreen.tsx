@@ -10,12 +10,12 @@ export const LeaderboardScreen: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<'week' | 'alltime' | 'faculty'>('week');
 
   const handleExportCSV = () => {
-    const csvContent = "data:text/csv;charset=utf-8,Rank,Student,NodeID,TrustScore,Accuracy,Votes,Tier\n"
+    const csvContent = "data:text/csv;charset=utf-8,Rank,Student,ID,TrustScore,Accuracy,Votes,Tier\n"
       + LEADERBOARD_DATA.map(e => `${e.rank},${e.name},${e.nodeId},${e.trustScore},${e.accuracyPct}%,${e.votesCount},${e.tier}`).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "Consensus_Reliability_Ledger_Sem6A.csv");
+    link.setAttribute("download", "Class_Attendance_Summary_Sem6A.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -28,11 +28,11 @@ export const LeaderboardScreen: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 stealth-card p-6">
         <div>
           <span className="text-[10px] font-mono text-[#6BD8CB] uppercase tracking-wider block mb-1 tnum">
-            TELEMETRY INTEGRITY VERIFICATION • Cluster // Sem VI-A
+            ATTENDANCE INTEGRITY & VERIFICATION • Sem VI-A
           </span>
-          <h1 className="text-xl font-jakarta font-bold text-white">Node Consensus & Quorum Trust Matrix</h1>
+          <h1 className="text-xl font-jakarta font-bold text-white">Class Attendance & Reliability Leaderboard</h1>
           <p className="text-xs text-[#94A3B8] mt-1 font-sans">
-            Highest-Reliability Peer Telemetry Nodes — Verified cryptographic nodes maintaining zero presence discrepancies.
+            Students with consistent attendance check-ins, high presence reliability, and active class participation.
           </p>
         </div>
 
@@ -51,7 +51,7 @@ export const LeaderboardScreen: React.FC = () => {
               activeFilter === 'alltime' ? 'bg-[#1E293B] text-white font-bold' : 'text-[#94A3B8] hover:text-white'
             }`}
           >
-            All-Time Cluster
+            All-Time
           </button>
           <button
             onClick={() => setActiveFilter('faculty')}
@@ -59,21 +59,21 @@ export const LeaderboardScreen: React.FC = () => {
               activeFilter === 'faculty' ? 'bg-[#1E293B] text-white font-bold' : 'text-[#94A3B8] hover:text-white'
             }`}
           >
-            Validation Ratio
+            Verification Ratio
           </button>
         </div>
       </div>
 
-      {/* Bayesian Rule Notice Banner */}
+      {/* Verification Rule Notice Banner */}
       <div className="bg-[#161F30] border border-[#233044] rounded p-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-mono text-[#94A3B8]">
         <div className="flex items-center space-x-2">
           <ShieldCheck className="w-4 h-4 text-[#10B981] shrink-0" />
           <span>
-            Node reliability calculated using Bayesian multi-variate modeling. Cryptographic attestation and BLE mesh precision increase weight.
+            Attendance reliability is calculated based on verified lecture check-ins, CR confirmations, and class participation.
           </span>
         </div>
         <div className="text-[10px] text-[#64748B] shrink-0 tnum">
-          EPOCH: 0x94B2 • SIG: ED25519
+          Academic Term: 2025-26
         </div>
       </div>
 
@@ -87,11 +87,11 @@ export const LeaderboardScreen: React.FC = () => {
               <thead>
                 <tr className="border-b border-[#233044] text-[#64748B] text-[10px] uppercase">
                   <th className="py-3 px-2">RANK</th>
-                  <th className="py-3 px-2">PEER NODE / IDENTIFIER</th>
-                  <th className="py-3 px-2 text-right">TRUST SCORE</th>
+                  <th className="py-3 px-2">STUDENT / IDENTIFIER</th>
+                  <th className="py-3 px-2 text-right">RELIABILITY SCORE</th>
                   <th className="py-3 px-2 text-right">ACCURACY %</th>
-                  <th className="py-3 px-2 text-right">VOTES</th>
-                  <th className="py-3 px-2 text-center">STABILITY TIER</th>
+                  <th className="py-3 px-2 text-right">CHECK-INS</th>
+                  <th className="py-3 px-2 text-center">STANDING TIER</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#233044]">
@@ -139,11 +139,11 @@ export const LeaderboardScreen: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-2 text-center">
                       <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold tnum ${
-                        node.tier === 'Tier 1 Root'
+                        node.tier.includes('Tier 1')
                           ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30'
                           : 'bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30'
                       }`}>
-                        ● {node.tier}
+                        ● {node.tier.includes('Tier 1') ? 'Gold Tier' : 'Silver Tier'}
                       </span>
                     </td>
                   </tr>
@@ -153,29 +153,29 @@ export const LeaderboardScreen: React.FC = () => {
           </div>
 
           <div className="pt-4 border-t border-[#233044] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-[#94A3B8]">
-            <span className="tnum">Showing top 5 verified nodes out of 46 registered peer units in Sem VI-A.</span>
+            <span className="tnum">Showing top 5 verified students out of 46 registered members in Sem VI-A.</span>
             <button
               onClick={handleExportCSV}
               className="btn-stealth px-3 py-1.5 text-xs font-mono flex items-center space-x-2"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export Full Ledger (.CSV)</span>
+              <span>Export Attendance Summary (.CSV)</span>
             </button>
           </div>
         </div>
 
-        {/* Right Column: Network Health & Cryptographic Node Standing */}
+        {/* Right Column: Attendance Standing */}
         <div className="lg:col-span-4 space-y-6">
           
-          {/* Network Health Index Card */}
+          {/* Class Attendance Index Card */}
           <div className="stealth-card p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono text-[#64748B] uppercase">NETWORK HEALTH INDEX</span>
-              <span className="text-[#10B981] font-mono text-xs font-bold tnum">STABLE 100%</span>
+              <span className="text-[10px] font-mono text-[#64748B] uppercase">CLASS ATTENDANCE INDEX</span>
+              <span className="text-[#10B981] font-mono text-xs font-bold tnum">HIGH 99.4%</span>
             </div>
 
             <div className="flex items-center space-x-4">
-              {/* Circular Fidelity Gauge */}
+              {/* Circular Gauge */}
               <div className="relative w-16 h-16 shrink-0">
                 <svg className="w-full h-full transform -rotate-90">
                   <circle cx="32" cy="32" r="26" stroke="#1E293B" strokeWidth="6" fill="transparent" />
@@ -183,46 +183,46 @@ export const LeaderboardScreen: React.FC = () => {
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center font-mono">
                   <span className="text-xs font-bold text-white tnum">99.4%</span>
-                  <span className="text-[7px] text-[#64748B]">FIDELITY</span>
+                  <span className="text-[7px] text-[#64748B]">RELIABILITY</span>
                 </div>
               </div>
 
               <div>
-                <h4 className="font-jakarta font-semibold text-white text-sm">Cluster Consensus</h4>
+                <h4 className="font-jakarta font-semibold text-white text-sm">Class Verification Rate</h4>
                 <p className="text-xs text-[#94A3B8] leading-snug mt-1 font-sans">
-                  Zero conflicting hardware pings logged during active telemetry slots.
+                  Consistent attendance verification logged across all scheduled lectures.
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 bg-[#161F30] border border-[#233044] p-3 rounded text-center font-mono text-xs">
               <div>
-                <span className="text-[10px] text-[#64748B] block">Pending Disputes</span>
+                <span className="text-[10px] text-[#64748B] block">Pending Reviews</span>
                 <span className="text-white font-bold text-sm tnum">0</span>
               </div>
               <div>
-                <span className="text-[10px] text-[#64748B] block">Quorum Ratio</span>
+                <span className="text-[10px] text-[#64748B] block">Present Ratio</span>
                 <span className="text-[#6BD8CB] font-bold text-sm tnum">38 / 46</span>
               </div>
             </div>
 
             <div className="space-y-1 text-[11px] font-mono text-[#94A3B8]">
-              <span className="font-bold text-[#DFE2F1] uppercase block text-[10px]">QUORUM THRESHOLD LOGIC</span>
+              <span className="font-bold text-[#DFE2F1] uppercase block text-[10px]">VERIFICATION CRITERIA</span>
               <p className="text-[#64748B] leading-relaxed">
-                Presence records achieve ledger finality when &gt;66% of Tier 1 & Tier 2 nodes sign the classroom Bluetooth + GPS mesh challenge within a 3-minute epoch.
+                Attendance records are confirmed when verified during class hours via location check-in or CR submission.
               </p>
             </div>
           </div>
 
-          {/* Cryptographic Node Standing */}
+          {/* Student Account Standing */}
           <div className="stealth-card p-6 space-y-4">
             <div className="flex items-center space-x-2 text-[#6366F1]">
               <Key className="w-4 h-4" />
-              <h3 className="font-jakarta font-bold text-white text-sm">Cryptographic Node Standing</h3>
+              <h3 className="font-jakarta font-bold text-white text-sm">Student Attendance Standing</h3>
             </div>
 
             <p className="text-xs text-[#94A3B8] leading-relaxed font-sans">
-              Your client node <span className="text-white font-mono font-bold">(ALX-9942)</span> has maintained zero false reports over 64 consecutive days, granting Root consensus authority on reconciliation cycles.
+              Your profile <span className="text-white font-mono font-bold">(ID: 21CS045)</span> has maintained consistent attendance over 64 consecutive days, maintaining Gold tier standing.
             </p>
 
             <div className="w-full h-1.5 bg-[#0F131D] rounded-full overflow-hidden">
@@ -230,10 +230,10 @@ export const LeaderboardScreen: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between text-xs font-mono text-[#94A3B8] pt-1">
-              <span className="bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/30 px-2 py-0.5 rounded text-[10px] font-bold">
-                ROOT CERTIFIED
+              <span className="bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                GOLD TIER VERIFIED
               </span>
-              <span className="tnum">NEXT EVAL: 4D 12H</span>
+              <span className="tnum">EVALUATED WEEKLY</span>
             </div>
           </div>
 
@@ -244,3 +244,4 @@ export const LeaderboardScreen: React.FC = () => {
     </div>
   );
 };
+

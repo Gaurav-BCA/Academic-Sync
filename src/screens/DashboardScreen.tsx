@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { 
   ShieldCheck, 
-  MapPin, 
   Radio, 
   Sliders, 
   ChevronDown,
   ChevronUp,
-  Info,
   Calendar,
-  Sparkles
+  Grid
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -19,7 +17,7 @@ import {
   Tooltip, 
   ReferenceLine 
 } from 'recharts';
-import { INITIAL_SUBJECTS, TODAY_SEQUENCE, SubjectTelemetry } from '../data/mockData';
+import { INITIAL_SUBJECTS, TODAY_SEQUENCE, TIMETABLE_MATRIX, SubjectTelemetry } from '../data/mockData';
 
 interface DashboardScreenProps {
   onOpenVotingModal: () => void;
@@ -475,6 +473,106 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
         )}
       </section>
 
+      {/* 5. FULL WEEKLY TIMETABLE — Collapsible */}
+      <TimetableSection />
+
     </div>
   );
 };
+
+// ─── Inline Timetable Section ────────────────────────────────────────────────
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+type Day = typeof DAYS[number];
+
+const DAY_SUBTITLES: Record<Day, string> = {
+  Mon: 'Primary Core',
+  Tue: 'Deep Execution',
+  Wed: 'Systems Sync',
+  Thu: 'Neural Pipeline',
+  Fri: 'Cloud Infra',
+  Sat: 'Synthetics/Colloq',
+};
+
+function TimetableSection() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className="stealth-card p-5 space-y-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between text-left focus:outline-none"
+      >
+        <div className="flex items-center space-x-2">
+          <Grid className="w-5 h-5 text-[#6366F1]" />
+          <div>
+            <h2 className="text-lg font-jakarta font-bold text-white">Full Weekly Timetable</h2>
+            <p className="text-xs text-[#94A3B8] font-mono">Semester VI • Synchronous Telemetry Matrix</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-2 btn-stealth px-3 py-1.5 text-xs font-mono">
+          <span>{open ? 'Collapse' : 'View Timetable'}</span>
+          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="pt-4 border-t border-[#233044] overflow-x-auto">
+          <div className="grid grid-cols-6 gap-3 min-w-[900px]">
+            {DAYS.map((day) => (
+              <div key={day} className="space-y-3">
+                {/* Day header */}
+                <div className="stealth-card p-3 text-center">
+                  <p className="font-jakarta font-bold text-white text-sm">{day}</p>
+                  <p className="text-[10px] font-mono text-[#64748B]">{DAY_SUBTITLES[day]}</p>
+                </div>
+
+                {/* Slots */}
+                {TIMETABLE_MATRIX.filter((s) => s.day === day).map((slot) => (
+                  <div
+                    key={slot.id}
+                    className={`stealth-card p-3 space-y-2 ${
+                      slot.type === 'Laboratory'
+                        ? 'border-[#8B5CF6]/40 bg-[#8B5CF6]/5'
+                        : slot.type === 'Seminar'
+                        ? 'border-[#0D9488]/40 bg-[#0D9488]/5'
+                        : slot.type === 'Free'
+                        ? 'border-[#233044] bg-[#161F30]/40 opacity-70'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-semibold ${
+                        slot.type === 'Laboratory'
+                          ? 'bg-[#8B5CF6]/20 text-[#8B5CF6]'
+                          : slot.type === 'Seminar'
+                          ? 'bg-[#0D9488]/20 text-[#6BD8CB]'
+                          : 'bg-[#161F30] text-[#94A3B8]'
+                      }`}>
+                        {slot.type}
+                      </span>
+                      {slot.statusTag && (
+                        <span className={`text-[9px] font-mono font-bold ${
+                          slot.statusType === 'critical' ? 'text-[#EF4444]' : 'text-[#10B981]'
+                        }`}>
+                          {slot.statusTag}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-jakarta font-semibold text-white text-xs truncate">{slot.subjectName}</h4>
+                      <p className="text-[10px] font-mono text-[#94A3B8] truncate">{slot.faculty || 'Unassigned'}</p>
+                    </div>
+                    <div className="pt-2 border-t border-[#233044] flex items-center justify-between text-[10px] font-mono text-[#64748B] tnum">
+                      <span>📍 {slot.room}</span>
+                      <span>{slot.time.split(' ')[0]}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

@@ -66,9 +66,9 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
 
         {/* Main Title Question */}
         <div className="space-y-1">
-          <h2 className="text-xl font-jakarta font-bold text-white">Did today's telemetry cycle execute?</h2>
+          <h2 className="text-xl font-jakarta font-bold text-white">Did today's class lecture take place?</h2>
           <p className="text-xs text-[#94A3B8] font-sans">
-            📍 GPS telemetry confirms hardware lock inside <span className="text-white font-semibold">Lecture Hall 302</span> (-0.4m delta).
+            📍 GPS verification confirms location inside <span className="text-white font-semibold">Lecture Hall 302</span>.
           </p>
         </div>
 
@@ -89,13 +89,13 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
                 <CheckCircle2 className="w-4 h-4" />
               </div>
               <span className="bg-[#10B981]/20 border border-[#10B981]/30 text-[10px] font-mono text-[#10B981] px-2 py-0.5 rounded tnum">
-                SIG-ACK
+                VERIFIED
               </span>
             </div>
             <div>
-              <h4 className="font-jakarta font-semibold text-white text-sm">YES — Cycle Executed</h4>
+              <h4 className="font-jakarta font-semibold text-white text-sm">YES — Lecture Conducted</h4>
               <p className="text-[11px] text-[#94A3B8] mt-1 leading-snug">
-                Faculty delivered module. Telemetry validated via quorum nodes.
+                Faculty delivered module. Attendance confirmed by class peers.
               </p>
             </div>
           </button>
@@ -114,13 +114,13 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
                 <XCircle className="w-4 h-4" />
               </div>
               <span className="bg-[#EF4444]/20 border border-[#EF4444]/30 text-[10px] font-mono text-[#EF4444] px-2 py-0.5 rounded tnum">
-                NULL-SLOT
+                CANCELLED
               </span>
             </div>
             <div>
-              <h4 className="font-jakarta font-semibold text-white text-sm">NO — Null Session</h4>
+              <h4 className="font-jakarta font-semibold text-white text-sm">NO — Lecture Cancelled</h4>
               <p className="text-[11px] text-[#94A3B8] mt-1 leading-snug">
-                Session cancelled or empty venue. Safe buffer skip logged.
+                Session was cancelled or teacher absent. Attendance preserved.
               </p>
             </div>
           </button>
@@ -137,8 +137,8 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
                 <div className="w-5 h-5 rounded-full bg-[#8B5CF6] text-[9px] flex items-center justify-center text-white font-bold tnum">DC</div>
               </div>
               <div>
-                <span className="text-white font-semibold tnum">3 of 4 verified nodes responded</span>
-                <p className="text-[10px] text-[#64748B]">P2P BLE Mesh • 220ms sync latency</p>
+                <span className="text-white font-semibold tnum">3 of 4 class peers responded</span>
+                <p className="text-[10px] text-[#64748B]">GPS & Location Verification Active</p>
               </div>
             </div>
 
@@ -157,7 +157,7 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
         <div className="flex items-start space-x-2 text-[11px] font-mono text-[#94A3B8] leading-relaxed">
           <ShieldCheck className="w-4 h-4 text-[#64748B] shrink-0 mt-0.5" />
           <span>
-            Only verified node peers can sign telemetry blocks. Low-trust votes are excluded from the Bayesian ledger. Zero PII stored.
+            Location verification ensures check-in authenticity. Your data is used strictly for attendance verification.
           </span>
         </div>
 
@@ -167,11 +167,11 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
             onClick={onClose}
             className="text-[#94A3B8] hover:text-white underline"
           >
-            Defer Node Vote (within 10m window)
+            Cancel / Close
           </button>
 
           <div className="text-[#64748B] text-[10px] tnum">
-            SHA-256 Consensus Proof #7A49-01
+            Verification ID #7A49-01
           </div>
         </div>
 

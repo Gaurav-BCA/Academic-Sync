@@ -5,11 +5,12 @@ export const Footer: React.FC = () => {
     <footer className="border-t border-[#233044] bg-[#161F30] py-4 px-6 text-xs text-[#64748B] font-mono flex flex-col sm:flex-row justify-between items-center gap-2">
       <div className="flex items-center space-x-2">
         <span className="w-2 h-2 rounded-full bg-[#10B981] inline-block" />
-        <span className="tnum">SEC-PROTO-V4 // HARDWARE TELEMETRY CONSENSUS LAYER</span>
+        <span className="tnum">ACADEMICSYNC • SMART ATTENDANCE MANAGEMENT SYSTEM</span>
       </div>
       <div className="tnum">
-        © 2026 Academic-Sync Core. Encrypted Enterprise Telemetry Gateway.
+        © 2026 Academic-Sync. Attendance Tracking & Predictive Forecasting.
       </div>
     </footer>
   );
 };
+

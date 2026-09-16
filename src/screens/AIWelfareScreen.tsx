@@ -21,20 +21,20 @@ export const AIWelfareScreen: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   const [generatedEmail, setGeneratedEmail] = useState({
-    subject: 'Request for Telemetry Credit Reinstatement — Distributed Core Systems (CS601)',
+    subject: 'Request for Attendance Reinstatement — Distributed Core Systems (CS601)',
     body: `Respected Dr. R. Sharma,
 
-I am writing to formally request attendance credit reinstatement for the Distributed Core Systems (CS601) telemetry cycle conducted on October 27, 2025. 
+I am writing to formally request attendance reinstatement for the Distributed Core Systems (CS601) lecture conducted on October 27, 2025. 
 
-On the specified date, I was officially assigned to administrative offline duty representing the institution at the NSS Placement Drive in the Main Auditorium, pursuant to official institutional requisition.
+On the specified date, I was officially assigned to duty representing the institution at the NSS Placement Drive in the Main Auditorium, pursuant to official institutional approval.
 
-I have attached the verified duty slip countersigned by the Placement Cell for your review. I would be deeply grateful if my absence for this cycle could be recorded as an authorized event exemption.
+I have attached the verified duty slip countersigned by the Placement Cell for your review. I would be deeply grateful if my absence for this lecture could be recorded as authorized duty leave.
 
 Thank you for your time, consideration, and continued guidance.
 
 Sincerely,
 Alex Rivera
-Roll No: CS-2025-A-042
+Roll No: 21CS045
 Department of Computer Science & Engineering
 Apex Institute of Technology`
   });
@@ -44,20 +44,20 @@ Apex Institute of Technology`
     setTimeout(() => {
       setIsGenerating(false);
       setGeneratedEmail({
-        subject: `[Formal Request] Telemetry Exemption for ${subject} on ${date}`,
+        subject: `[Formal Request] Attendance Exception for ${subject} on ${date}`,
         body: `Respected ${facultyName},
 
-I am writing to formally submit an application regarding my telemetry record for ${subject} on ${date}.
+I am writing to formally submit an application regarding my attendance record for ${subject} on ${date}.
 
 Reason for Absence: ${informalInput}
 
-As per institutional guidelines regarding ${reasonCategory}, I request that my attendance vector for this session be updated under the authorized offline duty policy. All relevant proof documentation has been uploaded to the Academic-Sync ledger portal for peer and administrative verification.
+As per institutional guidelines regarding ${reasonCategory}, I request that my attendance record for this session be updated under the authorized duty/medical leave policy. Relevant proof documentation is attached for your verification.
 
-I remain committed to keeping up with all course assignments and telemetry requirements.
+I remain committed to keeping up with all course assignments and class requirements.
 
 Respectfully yours,
 Alex Rivera
-CS-2025-A Cohort Node #042
+Roll No: 21CS045
 Apex Institute of Technology`
       });
     }, 1200);

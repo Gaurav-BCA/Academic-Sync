@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useOnboarding } from '../context/OnboardingContext';
 import { 
   Sparkles, 
   Share2, 
@@ -14,11 +16,9 @@ import {
 } from 'lucide-react';
 import { TIMETABLE_MATRIX } from '../data/mockData';
 
-interface TimetableSetupScreenProps {
-  onConfirm: () => void;
-}
-
-export const TimetableSetupScreen: React.FC<TimetableSetupScreenProps> = ({ onConfirm }) => {
+export const TimetableSetupScreen: React.FC = () => {
+  const navigate = useNavigate();
+  const { completeOnboarding } = useOnboarding();
   const [copiedCode, setCopiedCode] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'audit'>('grid');
 
@@ -229,7 +229,10 @@ export const TimetableSetupScreen: React.FC<TimetableSetupScreenProps> = ({ onCo
             <span className="tnum">Batch CS-VI-A: VERIFIED</span>
           </div>
           <button
-            onClick={onConfirm}
+            onClick={() => {
+              completeOnboarding('cr');
+              navigate('/dashboard');
+            }}
             className="btn-primary px-4 py-2 text-xs font-mono uppercase flex items-center space-x-2"
           >
             <Sparkles className="w-4 h-4" />
