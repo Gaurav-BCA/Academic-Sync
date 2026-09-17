@@ -42,12 +42,12 @@ export interface LeaderboardNode {
   rank: number;
   name: string;
   isCurrentUser?: boolean;
-  nodeId: string;
+  rollNumber: string;
   trustScore: number;
   accuracyPct: number;
   accuracyTrend: number;
   votesCount: number;
-  tier: 'Tier 1 Root' | 'Tier 2 Val' | 'Unverified';
+  tier: string;
 }
 
 export interface ReconciliationRecord {
@@ -142,7 +142,7 @@ export const TIMETABLE_MATRIX: TimetableSlot[] = [
 
   // Friday
   { id: 'f1', day: 'Fri', time: '09:00 - 10:30 AM', subjectCode: 'CS602', subjectName: 'Cloud Computing', faculty: 'Prof. S. Chen', room: 'LH-201', type: 'Lecture', statusTag: 'Safe: 2 cyc', statusType: 'safe' },
-  { id: 'f2', day: 'Fri', time: '10:45 - 12:45 PM', subjectCode: 'CS600', subjectName: 'Consensus Seminar', faculty: 'Dean Research Group', room: 'Auditorium B', type: 'Seminar', statusTag: 'Optional', statusType: 'optional' },
+  { id: 'f2', day: 'Fri', time: '10:45 - 12:45 PM', subjectCode: 'CS600', subjectName: 'Academic Seminar', faculty: 'Dean Research Group', room: 'Auditorium B', type: 'Seminar', statusTag: 'Optional', statusType: 'optional' },
   { id: 'f3', day: 'Fri', time: '01:45 - 03:15 PM', subjectCode: 'CS603', subjectName: 'Algorithm Design', faculty: 'Dr. A. Gupta', room: 'Auditorium B', type: 'Lecture', statusTag: 'Safe: 4 cyc', statusType: 'safe' },
 
   // Saturday
@@ -161,7 +161,7 @@ export const TODAY_SEQUENCE: TodaySequenceItem[] = [
     faculty: 'Prof. S. Chakrabarti • Graph Partitioning',
     status: 'conducted_gps',
     statusText: 'Conducted • Present (GPS Verified)',
-    subText: 'Telemetry Match: 99.4% Latency: 22ms'
+    subText: 'Location Verified • Radius Match'
   },
   {
     id: 'seq2',
@@ -171,8 +171,8 @@ export const TODAY_SEQUENCE: TodaySequenceItem[] = [
     subjectName: 'Database Internals',
     faculty: 'Dr. A. Mehra • Multi-Version Concurrency',
     status: 'conducted_consensus',
-    statusText: 'Conducted • Present (Consensus 96%)',
-    subText: '84 Nodes Multi-cast Verified'
+    statusText: 'Conducted • Present (Peer Verified)',
+    subText: 'Peer Attendance Confirmed'
   },
   {
     id: 'seq3',
@@ -203,52 +203,52 @@ export const LEADERBOARD_DATA: LeaderboardNode[] = [
     rank: 1,
     name: 'Alex Rivera',
     isCurrentUser: true,
-    nodeId: 'NODE-ALX-9942',
+    rollNumber: '21CS045',
     trustScore: 98.2,
     accuracyPct: 99.8,
     accuracyTrend: 0.8,
     votesCount: 142,
-    tier: 'Tier 1 Root'
+    tier: 'Tier 1'
   },
   {
     rank: 2,
     name: 'Priya Sharma',
-    nodeId: 'NODE-PRY-1088',
+    rollNumber: '21CS012',
     trustScore: 97.5,
     accuracyPct: 99.1,
     accuracyTrend: 1.2,
     votesCount: 138,
-    tier: 'Tier 1 Root'
+    tier: 'Tier 1'
   },
   {
     rank: 3,
     name: 'David Chen',
-    nodeId: 'NODE-DCH-4431',
+    rollNumber: '21CS018',
     trustScore: 96.8,
     accuracyPct: 98.4,
     accuracyTrend: 0.0,
     votesCount: 129,
-    tier: 'Tier 1 Root'
+    tier: 'Tier 1'
   },
   {
     rank: 4,
     name: 'Sarah Jenkins',
-    nodeId: 'NODE-SJK-7712',
+    rollNumber: '21CS024',
     trustScore: 94.2,
     accuracyPct: 96.9,
     accuracyTrend: -0.4,
     votesCount: 115,
-    tier: 'Tier 2 Val'
+    tier: 'Tier 2'
   },
   {
     rank: 5,
     name: 'Marcus Thorne',
-    nodeId: 'NODE-MTH-9021',
+    rollNumber: '21CS031',
     trustScore: 92.0,
     accuracyPct: 95.0,
     accuracyTrend: 2.1,
     votesCount: 104,
-    tier: 'Tier 2 Val'
+    tier: 'Tier 2'
   }
 ];
 

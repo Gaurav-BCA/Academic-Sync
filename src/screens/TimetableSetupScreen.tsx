@@ -15,6 +15,8 @@ import {
   FileText 
 } from 'lucide-react';
 import { TIMETABLE_MATRIX } from '../data/mockData';
+import { db } from '../services/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export const TimetableSetupScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +39,25 @@ export const TimetableSetupScreen: React.FC = () => {
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
+
+  const handleConfirmBatch = async () => {
+    const classCode = 'CS-8849';
+    try {
+      await setDoc(doc(db, "batches", classCode), {
+        classCode: classCode,
+        institution: 'Apex Inst. of Tech',
+        branch: 'Computer Science & Eng',
+        term: 'Sem VI',
+        timetable: TIMETABLE_MATRIX,
+        createdAt: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Firestore batch setup warning:", err);
+    }
+    completeOnboarding('coordinator');
+    navigate('/dashboard');
+  };
+
 
   return (
     <div className="space-y-6 py-4">
@@ -90,9 +111,9 @@ export const TimetableSetupScreen: React.FC = () => {
 
         <div className="stealth-card p-4 flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-mono text-[#64748B] uppercase">HEAVY HARDWARE TELEMETRY</p>
+            <p className="text-[10px] font-mono text-[#64748B] uppercase">PRACTICAL LAB SESSIONS</p>
             <div className="text-2xl font-jakarta font-bold text-white mt-1 tnum">6 <span className="text-xs text-[#94A3B8] font-normal font-mono">Intensive Labs</span></div>
-            <p className="text-[11px] text-[#10B981] font-mono mt-0.5 tnum">120-min execution windows • Cyber & AI nodes</p>
+            <p className="text-[11px] text-[#10B981] font-mono mt-0.5 tnum">120-min lab sessions • CS & AI Labs</p>
           </div>
           <div className="w-9 h-9 rounded bg-[#161F30] border border-[#233044] flex items-center justify-center text-[#94A3B8]">
             <Layers className="w-4 h-4" />
@@ -101,9 +122,9 @@ export const TimetableSetupScreen: React.FC = () => {
 
         <div className="stealth-card p-4 flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-mono text-[#64748B] uppercase">UNMONITORED LATENCY MARGINS</p>
+            <p className="text-[10px] font-mono text-[#64748B] uppercase">FREE STUDY WINDOWS</p>
             <div className="text-2xl font-jakarta font-bold text-white mt-1 tnum">4 <span className="text-xs text-[#94A3B8] font-normal font-mono">Free Study Windows</span></div>
-            <p className="text-[11px] text-[#8B5CF6] font-mono mt-0.5 tnum">Self-directed buffer headroom available</p>
+            <p className="text-[11px] text-[#8B5CF6] font-mono mt-0.5 tnum">Self-directed study windows available</p>
           </div>
           <div className="w-9 h-9 rounded bg-[#161F30] border border-[#233044] flex items-center justify-center text-[#94A3B8]">
             <Coffee className="w-4 h-4" />
@@ -115,7 +136,7 @@ export const TimetableSetupScreen: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 stealth-card rounded-b-none border-b-0 p-4">
         <div className="flex items-center space-x-2">
           <Calendar className="w-4 h-4 text-[#6366F1]" />
-          <span className="font-jakarta font-bold text-white text-sm">Weekly Synchronous Telemetry Matrix</span>
+          <span className="font-jakarta font-bold text-white text-sm">Weekly Course Schedule</span>
           <span className="text-xs font-mono text-[#64748B] tnum">CYCLE: SEMESTER VI (SPRING 2025)</span>
         </div>
 
@@ -125,7 +146,7 @@ export const TimetableSetupScreen: React.FC = () => {
             className={`px-3 py-1 rounded text-xs font-mono flex items-center space-x-1 ${viewMode === 'grid' ? 'bg-[#1E293B] text-white font-bold' : 'text-[#94A3B8]'}`}
           >
             <Grid className="w-3 h-3" />
-            <span>Matrix Grid</span>
+            <span>Schedule Grid</span>
           </button>
           <button 
             onClick={() => setViewMode('list')}
@@ -211,11 +232,11 @@ export const TimetableSetupScreen: React.FC = () => {
         <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-[#94A3B8]">
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#6366F1]" />
-            <span>Standard Sync Cycles</span>
+            <span>Standard Lectures</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#8B5CF6]" />
-            <span>Heavy Telemetry Labs</span>
+            <span>Practical Lab Sessions</span>
           </div>
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#0D9488]" />
@@ -229,10 +250,7 @@ export const TimetableSetupScreen: React.FC = () => {
             <span className="tnum">Batch CS-VI-A: VERIFIED</span>
           </div>
           <button
-            onClick={() => {
-              completeOnboarding('cr');
-              navigate('/dashboard');
-            }}
+            onClick={handleConfirmBatch}
             className="btn-primary px-4 py-2 text-xs font-mono uppercase flex items-center space-x-2"
           >
             <Sparkles className="w-4 h-4" />
@@ -242,4 +260,5 @@ export const TimetableSetupScreen: React.FC = () => {
       </div>
     </div>
   );
+
 };

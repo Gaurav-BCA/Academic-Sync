@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { HeaderNav } from './components/HeaderNav';
 import { Footer } from './components/Footer';
@@ -7,20 +7,22 @@ import { DashboardScreen } from './screens/DashboardScreen';
 import { ReconcileScreen } from './screens/ReconcileScreen';
 import { LeaderboardScreen } from './screens/LeaderboardScreen';
 import { AIWelfareScreen } from './screens/AIWelfareScreen';
+import { ManageStudentsScreen } from './screens/ManageStudentsScreen';
 import { SmartCheckModal } from './components/modals/SmartCheckModal';
 import { OnboardingProvider, useOnboarding } from './context/OnboardingContext';
+import { AppProvider, useApp } from './context/AppContext';
 import { ProtectedRoute, OnboardingRoute } from './components/ProtectedRoute';
 
 function AppShell() {
-  const [isVotingModalOpen, setIsVotingModalOpen] = useState(false);
   const { isOnboarded } = useOnboarding();
+  const { isCheckInModalOpen, openCheckInModal, closeCheckInModal } = useApp();
 
   return (
     <div className="min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
 
       {/* Top sticky navigation — only visible after onboarding is complete */}
       {isOnboarded && (
-        <HeaderNav onOpenVotingModal={() => setIsVotingModalOpen(true)} />
+        <HeaderNav onOpenVotingModal={openCheckInModal} />
       )}
 
       {/* Main container */}
@@ -43,7 +45,7 @@ function AppShell() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <DashboardScreen onOpenVotingModal={() => setIsVotingModalOpen(true)} />
+                <DashboardScreen onOpenVotingModal={openCheckInModal} />
               </ProtectedRoute>
             }
           />
@@ -71,6 +73,14 @@ function AppShell() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/manage"
+            element={
+              <ProtectedRoute>
+                <ManageStudentsScreen />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback: redirect unknown routes to overview */}
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -79,8 +89,8 @@ function AppShell() {
 
       {/* Geofenced Smart Check Modal Overlay */}
       <SmartCheckModal
-        isOpen={isVotingModalOpen}
-        onClose={() => setIsVotingModalOpen(false)}
+        isOpen={isCheckInModalOpen}
+        onClose={closeCheckInModal}
       />
 
       {/* Footer */}
@@ -92,9 +102,12 @@ function AppShell() {
 export function App() {
   return (
     <OnboardingProvider>
-      <AppShell />
+      <AppProvider>
+        <AppShell />
+      </AppProvider>
     </OnboardingProvider>
   );
 }
 
 export default App;
+

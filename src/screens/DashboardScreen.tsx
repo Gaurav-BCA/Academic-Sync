@@ -18,6 +18,7 @@ import {
   ReferenceLine 
 } from 'recharts';
 import { INITIAL_SUBJECTS, TODAY_SEQUENCE, TIMETABLE_MATRIX, SubjectTelemetry } from '../data/mockData';
+import { useApp } from '../context/AppContext';
 
 interface DashboardScreenProps {
   onOpenVotingModal: () => void;
@@ -77,9 +78,37 @@ const HeroCircularMeter: React.FC<{ percentage: number; size?: number }> = ({ pe
 };
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingModal }) => {
-  const [subjects] = useState<SubjectTelemetry[]>(INITIAL_SUBJECTS);
+  const { subjects, userProfile, todayTimetable } = useApp();
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('cs601');
   const [skipCount, setSkipCount] = useState<number>(3);
+
+  // Dynamic day calculation for schedule header
+  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const fullDays: Record<string, string> = {
+    Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday'
+  };
+  const currentDayCode = daysOfWeek[new Date().getDay()];
+  const currentDayFull = fullDays[currentDayCode] || 'Today';
+
+  // Compute active schedule sequence from Firestore todayTimetable or fallback
+  const scheduleItems = (todayTimetable && todayTimetable.length > 0) ? todayTimetable.map((slot: any, idx: number) => ({
+    id: slot.id || `slot-${idx}`,
+    time: slot.time || '09:00 AM - 10:00 AM',
+    room: slot.room || 'LH-302',
+    subjectCode: slot.subjectCode || 'CS-601',
+    subjectName: slot.subjectName || 'Distributed Systems',
+    faculty: slot.faculty || 'Dr. R. Sharma',
+    status: idx === 0 ? 'conducted_consensus' : idx === 1 ? 'awaiting_check' : 'scheduled',
+    statusText: idx === 0 ? 'Real-Time Consensus Verified' : idx === 1 ? 'Active Geo-Fence Check Window' : 'Scheduled Lecture Window',
+    subText: 'Synced with Firestore Batch Schedule'
+  })) : TODAY_SEQUENCE;
+
+
+  // Dynamic overall attendance math
+  const totalAttendedAll = subjects.reduce((acc, s) => acc + s.attended, 0);
+  const totalClassesAll = subjects.reduce((acc, s) => acc + s.total, 0);
+  const overallPercentage = totalClassesAll > 0 ? Number(((totalAttendedAll / totalClassesAll) * 100).toFixed(1)) : 81.4;
+  const totalBufferHeadroom = subjects.reduce((acc, s) => acc + Math.max(0, s.bufferHeadroom), 0);
 
   // Progressive Disclosure State
   const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null);
@@ -111,6 +140,29 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
 
   const chartData = generateChartData();
 
+  // Attend Streak Simulator State & Calculation
+  const [attendStreakCount, setAttendStreakCount] = useState<number>(5);
+  const streakTotalAttended = currentAttended + attendStreakCount;
+  const streakTotalClasses = currentTotal + attendStreakCount;
+  const streakProjectedPercentage = Number(((streakTotalAttended / streakTotalClasses) * 100).toFixed(1));
+  const isStreakProjectedSafe = streakProjectedPercentage >= 75.0;
+
+  const generateStreakChartData = () => {
+    const data = [];
+    for (let i = 0; i <= 10; i++) {
+      const att = currentAttended + i;
+      const tot = currentTotal + i;
+      const pct = Number(((att / tot) * 100).toFixed(1));
+      data.push({
+        classes: `+${i}`,
+        percentage: pct,
+      });
+    }
+    return data;
+  };
+
+  const streakChartData = generateStreakChartData();
+
   return (
     <div className="space-y-10 py-6 max-w-[1280px] mx-auto">
       
@@ -122,15 +174,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
           <div className="space-y-3 text-center md:text-left flex-1">
             <div className="inline-flex items-center space-x-2 bg-[#10B981]/10 border border-[#10B981]/30 px-3 py-1 rounded text-xs font-mono text-[#10B981]">
               <span className="radar-dot" />
-              <span className="tnum font-semibold">ATTENDANCE HEALTH: OPTIMAL</span>
+              <span className="tnum font-semibold">ATTENDANCE HEALTH: {overallPercentage >= 75 ? 'OPTIMAL' : 'WARNING'}</span>
             </div>
 
             <h1 className="text-3xl md:text-4xl font-jakarta font-bold text-white tracking-tight">
-              Overall Attendance: <span className="text-[#10B981] tnum">81.4%</span>
+              Overall Attendance: <span className="text-[#10B981] tnum">{overallPercentage}%</span>
             </h1>
 
             <p className="text-base text-[#DFE2F1] leading-relaxed max-w-xl font-sans">
-              You are comfortably in the safe zone. You have <span className="font-bold text-[#6BD8CB] tnum">5 safe skips</span> remaining across all subjects before reaching the mandatory 75% limit.
+              Welcome back, <strong className="text-white">{userProfile.fullName || 'Gaurav Bisht'}</strong> ({userProfile.rollNumber || '21CS045'}). You have <span className="font-bold text-[#6BD8CB] tnum">{totalBufferHeadroom} safe skips</span> remaining across all subjects before reaching the mandatory 75% limit.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono">
@@ -145,7 +197,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
           </div>
 
           {/* Right: Large Hero Meter */}
-          <HeroCircularMeter percentage={81.4} size={150} />
+          <HeroCircularMeter percentage={overallPercentage} size={150} />
 
         </div>
       </section>
@@ -156,19 +208,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
           <div className="flex items-center space-x-2">
             <Calendar className="w-5 h-5 text-[#6366F1]" />
             <h2 className="text-xl font-jakarta font-bold text-white">Today's Schedule</h2>
-            <span className="text-xs font-mono text-[#94A3B8]">• Monday, Oct 27</span>
+            <span className="text-xs font-mono text-[#94A3B8]">• {currentDayFull} Schedule</span>
           </div>
-          <span className="text-xs font-mono text-[#64748B]">4 Classes Scheduled</span>
+          <span className="text-xs font-mono text-[#64748B]">{scheduleItems.length} Classes Scheduled</span>
         </div>
 
         <div className="space-y-3">
-          {TODAY_SEQUENCE.map((item) => {
+          {scheduleItems.map((item: any) => {
             const isExpanded = expandedScheduleId === item.id;
             return (
               <div 
                 key={item.id}
                 className="stealth-card p-4 transition-all hover:border-[#3E506B]"
               >
+
                 <div className="flex items-center justify-between gap-4">
                   {/* Class Info */}
                   <div className="flex items-center space-x-4">
@@ -220,7 +273,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
                     </div>
                     {item.subText && (
                       <div>
-                        <span className="text-[#64748B] uppercase block text-[10px]">Node Metadata:</span>
+                        <span className="text-[#64748B] uppercase block text-[10px]">Verification Details:</span>
                         <span className="text-[#6BD8CB] tnum">{item.subText}</span>
                       </div>
                     )}
@@ -347,7 +400,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
             <Sliders className="w-5 h-5 text-[#6366F1]" />
             <div>
               <h2 className="text-lg font-jakarta font-bold text-white">Advanced Tools & Simulators</h2>
-              <p className="text-xs text-[#94A3B8] font-mono">What-If Skip Simulator & Quorum Trust Matrix</p>
+              <p className="text-xs text-[#94A3B8] font-mono">What-If Skip & Attend Streak Simulators</p>
             </div>
           </div>
 
@@ -440,32 +493,83 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
               </div>
             </div>
 
-            {/* Trust Network */}
-            <div className="lg:col-span-6 space-y-4 bg-[#161F30] p-5 rounded border border-[#233044] flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between border-b border-[#233044] pb-2">
-                  <h3 className="font-jakarta font-bold text-white text-sm">Trust & Quorum Network</h3>
-                  <ShieldCheck className="w-4 h-4 text-[#10B981]" />
-                </div>
-
-                <div className="mt-4 flex items-baseline justify-between">
-                  <div>
-                    <span className="text-3xl font-jakarta font-bold text-white tnum">98.2</span>
-                    <span className="text-[#64748B] font-mono text-xs tnum"> / 100 TRUST SCORE</span>
-                  </div>
-                  <span className="text-xs font-mono text-[#10B981] bg-[#10B981]/10 border border-[#10B981]/30 px-2 py-0.5 rounded tnum">
-                    Top 5% Reliability
-                  </span>
-                </div>
-
-                <p className="text-xs text-[#94A3B8] leading-relaxed mt-3 font-sans">
-                  Your client node has maintained zero presence discrepancies across 64 consecutive class cycles, providing high consensus weight during group check-ins.
-                </p>
+            {/* Attend Streak Simulator Card */}
+            <div className="lg:col-span-6 space-y-4 bg-[#161F30] p-5 rounded border border-[#233044]">
+              <div className="flex items-center justify-between border-b border-[#233044] pb-2">
+                <h3 className="font-jakarta font-bold text-white text-sm">Attend Streak Simulator</h3>
+                <span className="text-[10px] font-mono text-[#10B981] uppercase">Improvement Model</span>
               </div>
 
-              <div className="pt-3 border-t border-[#233044] flex items-center justify-between text-xs font-mono text-[#64748B] tnum">
-                <span>VERIFIED ATTESTATIONS: 382</span>
-                <span>DISPUTES: 0</span>
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono text-[#94A3B8]">Select Subject</label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => setSelectedSubjectId(e.target.value)}
+                  className="input-stealth w-full font-mono text-xs"
+                >
+                  {subjects.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name} ({sub.code}) — Current: {sub.percentage}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-[#94A3B8]">Simulate Attending</span>
+                  <span className="text-[#10B981] font-bold text-xs bg-[#1A2438] border border-[#233044] px-2.5 py-0.5 rounded tnum">
+                    {attendStreakCount} {attendStreakCount === 1 ? 'Class' : 'Classes'}
+                  </span>
+                </div>
+                
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="1"
+                  value={attendStreakCount}
+                  onChange={(e) => setAttendStreakCount(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-[#1A2438] rounded appearance-none cursor-pointer accent-[#10B981]"
+                />
+              </div>
+
+              {/* Chart */}
+              <div className="h-28 w-full pt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={streakChartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorPctSimStreak" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="classes" tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }} />
+                    <YAxis domain={[50, 100]} tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#1E293B', borderColor: '#334155', borderRadius: '4px', fontSize: '11px', color: '#DFE2F1' }}
+                      itemStyle={{ color: '#10B981' }}
+                    />
+                    <ReferenceLine y={75} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '75% MIN', fill: '#F59E0B', fontSize: 9 }} />
+                    <Area 
+                      type="monotone" 
+                      dataKey="percentage" 
+                      stroke="#10B981" 
+                      strokeWidth={2} 
+                      fillOpacity={1} 
+                      fill="url(#colorPctSimStreak)" 
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className={`p-2.5 rounded border flex items-center justify-between font-mono text-xs ${
+                isStreakProjectedSafe 
+                  ? 'bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]' 
+                  : 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B]'
+              }`}>
+                <span>Projected Attendance:</span>
+                <span className="font-bold tnum">{selectedSubject.percentage}% → {streakProjectedPercentage}%</span>
               </div>
             </div>
 
@@ -506,7 +610,7 @@ function TimetableSection() {
           <Grid className="w-5 h-5 text-[#6366F1]" />
           <div>
             <h2 className="text-lg font-jakarta font-bold text-white">Full Weekly Timetable</h2>
-            <p className="text-xs text-[#94A3B8] font-mono">Semester VI • Synchronous Telemetry Matrix</p>
+            <p className="text-xs text-[#94A3B8] font-mono">Semester VI Schedule</p>
           </div>
         </div>
         <div className="flex items-center space-x-2 btn-stealth px-3 py-1.5 text-xs font-mono">

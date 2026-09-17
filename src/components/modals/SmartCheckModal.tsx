@@ -8,19 +8,32 @@ import {
   ShieldCheck
 } from 'lucide-react';
 
+import { useApp } from '../../context/AppContext';
+
 interface SmartCheckModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
 export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClose }) => {
+  const { submitCheckInVote, voteStats } = useApp();
   const [selectedVote, setSelectedVote] = useState<'yes' | 'no' | null>(null);
 
   if (!isOpen) return null;
 
+  const totalResponded = voteStats?.totalResponded || 3;
+  const yesVotes = voteStats?.yesVotes || 3;
+  const confidencePct = Math.min(99.9, Number(((yesVotes / Math.max(1, totalResponded)) * 100).toFixed(1)));
+
   const handleVote = (vote: 'yes' | 'no') => {
     setSelectedVote(vote);
+    submitCheckInVote(vote);
+    setTimeout(() => {
+      onClose();
+      setSelectedVote(null);
+    }, 1500);
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -38,9 +51,6 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
             </span>
           </div>
           <div className="flex items-center space-x-2">
-            <span className="bg-[#161F30] border border-[#233044] text-[10px] font-mono text-[#94A3B8] px-2 py-0.5 rounded tnum">
-              BAYES-TRUST 0.992
-            </span>
             <button 
               onClick={onClose}
               className="text-[#94A3B8] hover:text-white transition-colors p-1"
@@ -71,6 +81,14 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
             📍 GPS verification confirms location inside <span className="text-white font-semibold">Lecture Hall 302</span>.
           </p>
         </div>
+
+        {/* Feedback Banner */}
+        {selectedVote && (
+          <div className="bg-[#10B981]/20 border border-[#10B981]/40 text-[#10B981] p-3 rounded text-xs font-mono flex items-center space-x-2 animate-fade-in">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>✓ Response recorded! Updating live class attendance log...</span>
+          </div>
+        )}
 
         {/* Voting Options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -137,21 +155,22 @@ export const SmartCheckModal: React.FC<SmartCheckModalProps> = ({ isOpen, onClos
                 <div className="w-5 h-5 rounded-full bg-[#8B5CF6] text-[9px] flex items-center justify-center text-white font-bold tnum">DC</div>
               </div>
               <div>
-                <span className="text-white font-semibold tnum">3 of 4 class peers responded</span>
-                <p className="text-[10px] text-[#64748B]">GPS & Location Verification Active</p>
+                <span className="text-white font-semibold tnum">{totalResponded} of 4 class peers responded</span>
+                <p className="text-[10px] text-[#64748B]">Real-Time Firestore Peer Consensus Active</p>
               </div>
             </div>
 
             <div className="text-right">
               <span className="text-[10px] text-[#94A3B8] block uppercase">CONFIDENCE</span>
-              <span className="text-[#10B981] font-bold text-sm tnum">94.8%</span>
+              <span className="text-[#10B981] font-bold text-sm tnum">{confidencePct}%</span>
             </div>
           </div>
 
           <div className="w-full h-1.5 bg-[#0F131D] rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-[#6366F1] to-[#10B981] rounded-full" style={{ width: '94.8%' }} />
+            <div className="h-full bg-gradient-to-r from-[#6366F1] to-[#10B981] rounded-full transition-all duration-500" style={{ width: `${confidencePct}%` }} />
           </div>
         </div>
+
 
         {/* Trust Notice */}
         <div className="flex items-start space-x-2 text-[11px] font-mono text-[#94A3B8] leading-relaxed">

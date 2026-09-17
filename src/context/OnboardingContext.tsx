@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
-export type UserRole = 'student' | 'cr' | null;
+export type UserRole = 'student' | 'coordinator' | null;
 
 export interface StudentProfile {
   fullName: string;
@@ -8,18 +8,21 @@ export interface StudentProfile {
   classCode: string;
 }
 
-export interface CRProfile {
+export interface CoordinatorProfile {
   institution: string;
   branch: string;
   semester: string;
 }
 
+export type CRProfile = CoordinatorProfile;
+
 interface OnboardingContextValue {
   isOnboarded: boolean;
   userRole: UserRole;
   studentProfile: StudentProfile | null;
-  crProfile: CRProfile | null;
-  completeOnboarding: (role: 'student' | 'cr', profileData?: StudentProfile | CRProfile) => void;
+  coordinatorProfile: CoordinatorProfile | null;
+  crProfile?: CoordinatorProfile | null; // legacy alias
+  completeOnboarding: (role: 'student' | 'coordinator', profileData?: StudentProfile | CoordinatorProfile) => void;
   resetOnboarding: () => void;
 }
 
@@ -28,6 +31,7 @@ const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 const LS_KEY_ONBOARDED = 'academicsync_isOnboarded';
 const LS_KEY_ROLE = 'academicsync_userRole';
 const LS_KEY_STUDENT = 'academicsync_studentProfile';
+const LS_KEY_COORDINATOR = 'academicsync_coordinatorProfile';
 const LS_KEY_CR = 'academicsync_crProfile';
 
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -42,7 +46,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [userRole, setUserRole] = useState<UserRole>(() => {
     try {
       const stored = localStorage.getItem(LS_KEY_ROLE);
-      return stored === 'student' || stored === 'cr' ? stored : null;
+      if (stored === 'student') return 'student';
+      if (stored === 'coordinator' || stored === 'cr') return 'coordinator';
+      return null;
     } catch {
       return null;
     }
@@ -51,31 +57,31 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(() => {
     try {
       const stored = localStorage.getItem(LS_KEY_STUDENT);
-      return stored ? JSON.parse(stored) : null;
+      return stored ? JSON.parse(stored) : { fullName: 'Gaurav Bisht', rollNumber: '21CS045', classCode: 'CS-8849' };
     } catch {
-      return null;
+      return { fullName: 'Gaurav Bisht', rollNumber: '21CS045', classCode: 'CS-8849' };
     }
   });
 
-  const [crProfile, setCrProfile] = useState<CRProfile | null>(() => {
+  const [coordinatorProfile, setCoordinatorProfile] = useState<CoordinatorProfile | null>(() => {
     try {
-      const stored = localStorage.getItem(LS_KEY_CR);
+      const stored = localStorage.getItem(LS_KEY_COORDINATOR) || localStorage.getItem(LS_KEY_CR);
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
     }
   });
 
-  const completeOnboarding = useCallback((role: 'student' | 'cr', profileData?: StudentProfile | CRProfile) => {
+  const completeOnboarding = useCallback((role: 'student' | 'coordinator', profileData?: StudentProfile | CoordinatorProfile) => {
     try {
       localStorage.setItem(LS_KEY_ONBOARDED, 'true');
       localStorage.setItem(LS_KEY_ROLE, role);
       if (role === 'student' && profileData) {
         localStorage.setItem(LS_KEY_STUDENT, JSON.stringify(profileData));
         setStudentProfile(profileData as StudentProfile);
-      } else if (role === 'cr' && profileData) {
-        localStorage.setItem(LS_KEY_CR, JSON.stringify(profileData));
-        setCrProfile(profileData as CRProfile);
+      } else if (role === 'coordinator' && profileData) {
+        localStorage.setItem(LS_KEY_COORDINATOR, JSON.stringify(profileData));
+        setCoordinatorProfile(profileData as CoordinatorProfile);
       }
     } catch {
       // localStorage unavailable — still update in-memory state
@@ -89,6 +95,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.removeItem(LS_KEY_ONBOARDED);
       localStorage.removeItem(LS_KEY_ROLE);
       localStorage.removeItem(LS_KEY_STUDENT);
+      localStorage.removeItem(LS_KEY_COORDINATOR);
       localStorage.removeItem(LS_KEY_CR);
     } catch {
       // noop
@@ -96,7 +103,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setIsOnboarded(false);
     setUserRole(null);
     setStudentProfile(null);
-    setCrProfile(null);
+    setCoordinatorProfile(null);
   }, []);
 
   return (
@@ -104,7 +111,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       isOnboarded, 
       userRole, 
       studentProfile, 
-      crProfile, 
+      coordinatorProfile, 
+      crProfile: coordinatorProfile,
       completeOnboarding, 
       resetOnboarding 
     }}>
@@ -120,4 +128,5 @@ export function useOnboarding(): OnboardingContextValue {
   }
   return ctx;
 }
+
 

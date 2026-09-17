@@ -3,15 +3,17 @@ import {
   Sparkles, 
   Copy, 
   FileText, 
-  Bot, 
   Mail, 
-  ShieldCheck 
+  CheckCircle2
 } from 'lucide-react';
+import { useApp } from '../context/AppContext';
 
 export const AIWelfareScreen: React.FC = () => {
+  const { userProfile } = useApp();
+
   const [facultyName, setFacultyName] = useState('Dr. R. Sharma');
   const [subject, setSubject] = useState('CS601 Distributed Core Systems');
-  const [date, setDate] = useState('2025-10-27');
+  const [date, setDate] = useState('2026-09-17');
   const [reasonCategory, setReasonCategory] = useState('Fest / Event Duty');
   const [informalInput, setInformalInput] = useState(
     'Missed session due to NSS placement drive coordination duty at Main Auditorium. Needed to assist 3rd year students. Requesting formal leave credit.'
@@ -19,12 +21,16 @@ export const AIWelfareScreen: React.FC = () => {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const studentName = userProfile.fullName || 'Gaurav Bisht';
+  const rollNumber = userProfile.rollNumber || '21CS045';
 
   const [generatedEmail, setGeneratedEmail] = useState({
     subject: 'Request for Attendance Reinstatement — Distributed Core Systems (CS601)',
     body: `Respected Dr. R. Sharma,
 
-I am writing to formally request attendance reinstatement for the Distributed Core Systems (CS601) lecture conducted on October 27, 2025. 
+I am writing to formally request attendance reinstatement for the Distributed Core Systems (CS601) lecture conducted on September 17, 2026. 
 
 On the specified date, I was officially assigned to duty representing the institution at the NSS Placement Drive in the Main Auditorium, pursuant to official institutional approval.
 
@@ -33,8 +39,8 @@ I have attached the verified duty slip countersigned by the Placement Cell for y
 Thank you for your time, consideration, and continued guidance.
 
 Sincerely,
-Alex Rivera
-Roll No: 21CS045
+${studentName}
+Roll No: ${rollNumber}
 Department of Computer Science & Engineering
 Apex Institute of Technology`
   });
@@ -47,46 +53,56 @@ Apex Institute of Technology`
         subject: `[Formal Request] Attendance Exception for ${subject} on ${date}`,
         body: `Respected ${facultyName},
 
-I am writing to formally submit an application regarding my attendance record for ${subject} on ${date}.
+I am writing to formally submit an application regarding my attendance record for ${subject} conducted on ${date}.
 
-Reason for Absence: ${informalInput}
+Reason for Absence / Duty: ${informalInput}
 
 As per institutional guidelines regarding ${reasonCategory}, I request that my attendance record for this session be updated under the authorized duty/medical leave policy. Relevant proof documentation is attached for your verification.
 
 I remain committed to keeping up with all course assignments and class requirements.
 
 Respectfully yours,
-Alex Rivera
-Roll No: 21CS045
+${studentName}
+Roll No: ${rollNumber}
+Department of Computer Science & Engineering
 Apex Institute of Technology`
       });
+      setToastMessage('Formal leave application draft generated!');
+      setTimeout(() => setToastMessage(null), 3500);
     }, 1200);
   };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(`Subject: ${generatedEmail.subject}\n\n${generatedEmail.body}`);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setToastMessage('Copied draft to clipboard!');
+    setTimeout(() => {
+      setCopied(false);
+      setToastMessage(null);
+    }, 2500);
   };
 
   return (
-    <div className="space-y-6 py-4">
+    <div className="space-y-6 py-4 relative">
+      
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-16 right-4 z-50 bg-[#10B981]/90 text-white font-mono text-xs px-4 py-3 rounded shadow-lg border border-[#10B981] flex items-center space-x-2 animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
       
       {/* Top Banner */}
       <div className="stealth-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="text-[10px] font-mono text-[#8B5CF6] uppercase tracking-wider block mb-1 tnum">
-            AI ACADEMIC WELFARE & ATTENDANCE DEFENSE ENGINE
+            AI ACADEMIC LEAVE APPLICATION ASSISTANT
           </span>
-          <h1 className="text-xl font-jakarta font-bold text-white">Automated System Load & Resource Welfare Diagnostics</h1>
+          <h1 className="text-xl font-jakarta font-bold text-white">Academic Leave Application Draft Generator</h1>
           <p className="text-xs text-[#94A3B8] mt-1 max-w-2xl font-sans">
-            Transform casual notes, medical events, or fest duty reasons into institutionally compliant, formal academic leave & defense communications using LLM synthesis.
+            Transform casual notes, medical events, or fest duty reasons into formal academic leave applications.
           </p>
-        </div>
-
-        <div className="flex items-center space-x-2 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 px-3 py-1.5 rounded text-xs font-mono text-[#8B5CF6] shrink-0 tnum">
-          <Bot className="w-4 h-4 text-[#8B5CF6] animate-pulse" />
-          <span>LLM-Engine: Gemini 2.5 Flash</span>
         </div>
       </div>
 
@@ -206,9 +222,8 @@ Apex Institute of Technology`
           </div>
 
           <div className="pt-4 border-t border-[#233044] flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-            <span className="text-[#94A3B8] flex items-center space-x-1">
-              <ShieldCheck className="w-4 h-4 text-[#10B981]" />
-              <span>Compliant with Institutional Leave Standard Clause 8.2</span>
+            <span className="text-[#94A3B8] text-xs">
+              This is a draft — please review before sending.
             </span>
 
             <div className="flex items-center space-x-2">

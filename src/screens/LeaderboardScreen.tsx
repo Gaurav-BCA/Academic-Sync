@@ -5,13 +5,19 @@ import {
   Key 
 } from 'lucide-react';
 import { LEADERBOARD_DATA } from '../data/mockData';
+import { useOnboarding } from '../context/OnboardingContext';
 
 export const LeaderboardScreen: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<'week' | 'alltime' | 'faculty'>('week');
+  const onboardingContext = useOnboarding();
+  const studentProfile = onboardingContext?.studentProfile;
+
+  const totalStudents = LEADERBOARD_DATA.length;
+  const topCount = Math.min(5, totalStudents);
 
   const handleExportCSV = () => {
-    const csvContent = "data:text/csv;charset=utf-8,Rank,Student,ID,TrustScore,Accuracy,Votes,Tier\n"
-      + LEADERBOARD_DATA.map(e => `${e.rank},${e.name},${e.nodeId},${e.trustScore},${e.accuracyPct}%,${e.votesCount},${e.tier}`).join("\n");
+    const csvContent = "data:text/csv;charset=utf-8,Rank,Student,RollNumber,ReliabilityScore,Accuracy,CheckIns,Tier\n"
+      + LEADERBOARD_DATA.map(e => `${e.rank},${e.name},${e.isCurrentUser && studentProfile?.rollNumber ? studentProfile.rollNumber : e.rollNumber},${e.trustScore},${e.accuracyPct}%,${e.votesCount},${e.tier}`).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -69,7 +75,7 @@ export const LeaderboardScreen: React.FC = () => {
         <div className="flex items-center space-x-2">
           <ShieldCheck className="w-4 h-4 text-[#10B981] shrink-0" />
           <span>
-            Attendance reliability is calculated based on verified lecture check-ins, CR confirmations, and class participation.
+            Attendance reliability is calculated based on verified lecture check-ins, Class Coordinator confirmations, and class participation.
           </span>
         </div>
         <div className="text-[10px] text-[#64748B] shrink-0 tnum">
@@ -87,7 +93,7 @@ export const LeaderboardScreen: React.FC = () => {
               <thead>
                 <tr className="border-b border-[#233044] text-[#64748B] text-[10px] uppercase">
                   <th className="py-3 px-2">RANK</th>
-                  <th className="py-3 px-2">STUDENT / IDENTIFIER</th>
+                  <th className="py-3 px-2">STUDENT / ROLL NUMBER</th>
                   <th className="py-3 px-2 text-right">RELIABILITY SCORE</th>
                   <th className="py-3 px-2 text-right">ACCURACY %</th>
                   <th className="py-3 px-2 text-right">CHECK-INS</th>
@@ -95,65 +101,75 @@ export const LeaderboardScreen: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#233044]">
-                {LEADERBOARD_DATA.map((node) => (
-                  <tr 
-                    key={node.nodeId}
-                    className={`transition-colors ${
-                      node.isCurrentUser ? 'bg-[#6366F1]/10 font-bold' : 'hover:bg-[#161F30]'
-                    }`}
-                  >
-                    <td className="py-3.5 px-2 font-bold text-[#DFE2F1] tnum">
-                      #{String(node.rank).padStart(2, '0')}
-                    </td>
-                    <td className="py-3.5 px-2">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-7 h-7 rounded flex items-center justify-center font-bold text-xs tnum ${
-                          node.isCurrentUser ? 'bg-[#6366F1] text-white' : 'bg-[#161F30] border border-[#233044] text-[#DFE2F1]'
-                        }`}>
-                          {node.name.split(' ').map(n => n[0]).join('')}
-                        </div>
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-white text-sm font-jakarta font-semibold">{node.name}</span>
-                            {node.isCurrentUser && (
-                              <span className="bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/40 px-1.5 py-0.2 text-[9px] rounded uppercase font-bold">
-                                YOU
-                              </span>
-                            )}
+                {LEADERBOARD_DATA.map((student) => {
+                  const displayRollNumber = student.isCurrentUser && studentProfile?.rollNumber 
+                    ? studentProfile.rollNumber 
+                    : student.rollNumber;
+                  const displayName = student.isCurrentUser && studentProfile?.fullName
+                    ? studentProfile.fullName
+                    : student.name;
+
+                  return (
+                    <tr 
+                      key={displayRollNumber}
+                      className={`transition-colors ${
+                        student.isCurrentUser ? 'bg-[#6366F1]/10 font-bold' : 'hover:bg-[#161F30]'
+                      }`}
+                    >
+                      <td className="py-3.5 px-2 font-bold text-[#DFE2F1] tnum">
+                        #{String(student.rank).padStart(2, '0')}
+                      </td>
+                      <td className="py-3.5 px-2">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-7 h-7 rounded flex items-center justify-center font-bold text-xs tnum ${
+                            student.isCurrentUser ? 'bg-[#6366F1] text-white' : 'bg-[#161F30] border border-[#233044] text-[#DFE2F1]'
+                          }`}>
+                            {displayName.split(' ').map(n => n[0]).join('')}
                           </div>
-                          <span className="text-[10px] text-[#64748B] tnum">{node.nodeId}</span>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-white text-sm font-jakarta font-semibold">{displayName}</span>
+                              {student.isCurrentUser && (
+                                <span className="bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/40 px-1.5 py-0.2 text-[9px] rounded uppercase font-bold">
+                                  YOU
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-[#64748B] tnum">{displayRollNumber}</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-2 text-right font-jakarta font-bold text-white text-sm tnum">
-                      {node.trustScore.toFixed(1)}
-                    </td>
-                    <td className="py-3.5 px-2 text-right">
-                      <div className="text-[#10B981] font-bold text-sm tnum">{node.accuracyPct}%</div>
-                      <div className={`text-[10px] tnum ${node.accuracyTrend >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                        {node.accuracyTrend >= 0 ? `↑ +${node.accuracyTrend}%` : `↓ ${node.accuracyTrend}%`}
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-2 text-right text-[#DFE2F1] tnum">
-                      {node.votesCount}
-                    </td>
-                    <td className="py-3.5 px-2 text-center">
-                      <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold tnum ${
-                        node.tier.includes('Tier 1')
-                          ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30'
-                          : 'bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30'
-                      }`}>
-                        ● {node.tier.includes('Tier 1') ? 'Gold Tier' : 'Silver Tier'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      {/* DEV NOTE: Reliability scores, accuracy percentages, and check-in counts below are sample demonstration data */}
+                      <td className="py-3.5 px-2 text-right font-jakarta font-bold text-white text-sm tnum">
+                        {student.trustScore.toFixed(1)}
+                      </td>
+                      <td className="py-3.5 px-2 text-right">
+                        <div className="text-[#10B981] font-bold text-sm tnum">{student.accuracyPct}%</div>
+                        <div className={`text-[10px] tnum ${student.accuracyTrend >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                          {student.accuracyTrend >= 0 ? `↑ +${student.accuracyTrend}%` : `↓ ${student.accuracyTrend}%`}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-2 text-right text-[#DFE2F1] tnum">
+                        {student.votesCount}
+                      </td>
+                      <td className="py-3.5 px-2 text-center">
+                        <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold tnum ${
+                          student.tier.includes('Tier 1')
+                            ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30'
+                            : 'bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30'
+                        }`}>
+                          ● {student.tier.includes('Tier 1') ? 'Gold Tier' : 'Silver Tier'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           <div className="pt-4 border-t border-[#233044] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-[#94A3B8]">
-            <span className="tnum">Showing top 5 verified students out of 46 registered members in Sem VI-A.</span>
+            <span className="tnum">Showing top {topCount} of {totalStudents} students in Sem VI-A.</span>
             <button
               onClick={handleExportCSV}
               className="btn-stealth px-3 py-1.5 text-xs font-mono flex items-center space-x-2"
@@ -168,10 +184,11 @@ export const LeaderboardScreen: React.FC = () => {
         <div className="lg:col-span-4 space-y-6">
           
           {/* Class Attendance Index Card */}
+          {/* DEV NOTE: The aggregate class verification index (99.4%) and present ratio (38/46) below are sample placeholder metrics for development */}
           <div className="stealth-card p-6 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono text-[#64748B] uppercase">CLASS ATTENDANCE INDEX</span>
-              <span className="text-[#10B981] font-mono text-xs font-bold tnum">HIGH 99.4%</span>
+              <span className="text-[#10B981] font-mono text-xs font-bold tnum">HIGH 99.4% (Sample)</span>
             </div>
 
             <div className="flex items-center space-x-4">
@@ -201,7 +218,7 @@ export const LeaderboardScreen: React.FC = () => {
                 <span className="text-white font-bold text-sm tnum">0</span>
               </div>
               <div>
-                <span className="text-[10px] text-[#64748B] block">Present Ratio</span>
+                <span className="text-[10px] text-[#64748B] block">Present Ratio (Sample)</span>
                 <span className="text-[#6BD8CB] font-bold text-sm tnum">38 / 46</span>
               </div>
             </div>
@@ -209,7 +226,7 @@ export const LeaderboardScreen: React.FC = () => {
             <div className="space-y-1 text-[11px] font-mono text-[#94A3B8]">
               <span className="font-bold text-[#DFE2F1] uppercase block text-[10px]">VERIFICATION CRITERIA</span>
               <p className="text-[#64748B] leading-relaxed">
-                Attendance records are confirmed when verified during class hours via location check-in or CR submission.
+                Attendance records are confirmed when verified during class hours via location check-in or Class Coordinator submission.
               </p>
             </div>
           </div>
@@ -222,7 +239,7 @@ export const LeaderboardScreen: React.FC = () => {
             </div>
 
             <p className="text-xs text-[#94A3B8] leading-relaxed font-sans">
-              Your profile <span className="text-white font-mono font-bold">(ID: 21CS045)</span> has maintained consistent attendance over 64 consecutive days, maintaining Gold tier standing.
+              Your profile <span className="text-white font-mono font-bold">(Roll No: {studentProfile?.rollNumber || '21CS045'})</span> has maintained consistent attendance over 64 consecutive days, maintaining Gold tier standing.
             </p>
 
             <div className="w-full h-1.5 bg-[#0F131D] rounded-full overflow-hidden">
