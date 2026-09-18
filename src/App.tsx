@@ -18,12 +18,17 @@ function AppShell() {
   const { isCheckInModalOpen, openCheckInModal, closeCheckInModal } = useApp();
 
   return (
-    <div className="min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
+    <div className="min-h-screen bg-[#FFF9F2] text-neutral-900 flex flex-col justify-between selection:bg-[#FF6B4B] selection:text-white relative overflow-hidden">
+      {/* Ambient Pastel Background Blur Blobs */}
+      <div className="fixed -top-32 -left-32 w-96 h-96 rounded-full bg-orange-200/40 blur-3xl pointer-events-none -z-10" />
+      <div className="fixed top-1/3 -right-32 w-96 h-96 rounded-full bg-emerald-200/30 blur-3xl pointer-events-none -z-10" />
+      <div className="fixed -bottom-32 left-1/3 w-96 h-96 rounded-full bg-indigo-200/30 blur-3xl pointer-events-none -z-10" />
 
       {/* Top sticky navigation — only visible after onboarding is complete */}
       {isOnboarded && (
         <HeaderNav onOpenVotingModal={openCheckInModal} />
       )}
+
 
       {/* Main container */}
       <main className="max-w-7xl mx-auto px-4 lg:px-8 w-full flex-grow py-4">

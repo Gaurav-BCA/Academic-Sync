@@ -83,24 +83,24 @@ Apex Institute of Technology`
   };
 
   return (
-    <div className="space-y-6 py-4 relative">
+    <div className="space-y-6 py-4 relative max-w-[1240px] mx-auto">
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-16 right-4 z-50 bg-[#10B981]/90 text-white font-mono text-xs px-4 py-3 rounded shadow-lg border border-[#10B981] flex items-center space-x-2 animate-fade-in">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>{toastMessage}</span>
+        <div className="fixed top-20 right-6 z-50 bg-emerald-600 text-white font-mono text-xs px-5 py-3.5 rounded-2xl shadow-xl border border-emerald-500 flex items-center space-x-2.5 animate-fade-in">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-white" />
+          <span className="font-bold">{toastMessage}</span>
         </div>
       )}
       
       {/* Top Banner */}
-      <div className="stealth-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="stealth-card p-6 bg-white border border-amber-100 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <span className="text-[10px] font-mono text-[#8B5CF6] uppercase tracking-wider block mb-1 tnum">
+          <span className="text-[10px] font-mono text-indigo-800 bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-bold block w-max mb-1.5 tnum">
             AI ACADEMIC LEAVE APPLICATION ASSISTANT
           </span>
-          <h1 className="text-xl font-jakarta font-bold text-white">Academic Leave Application Draft Generator</h1>
-          <p className="text-xs text-[#94A3B8] mt-1 max-w-2xl font-sans">
+          <h1 className="text-2xl font-jakarta font-bold text-neutral-900">Academic Leave Application Draft Generator</h1>
+          <p className="text-xs text-neutral-600 mt-1 max-w-2xl font-sans">
             Transform casual notes, medical events, or fest duty reasons into formal academic leave applications.
           </p>
         </div>
@@ -110,29 +110,29 @@ Apex Institute of Technology`
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Form */}
-        <div className="lg:col-span-5 stealth-card p-6 space-y-4">
-          <h3 className="font-jakarta font-bold text-white text-base flex items-center space-x-2">
-            <FileText className="w-4 h-4 text-[#6BD8CB]" />
+        <div className="lg:col-span-5 stealth-card p-6 space-y-4 bg-white border border-amber-100 rounded-3xl shadow-sm">
+          <h3 className="font-jakarta font-bold text-neutral-900 text-base flex items-center space-x-2 border-b border-amber-100 pb-3">
+            <FileText className="w-4 h-4 text-[#FF6B4B]" />
             <span>Informal Input Parameters</span>
           </h3>
 
           <div className="space-y-3 font-mono text-xs">
             <div>
-              <label className="text-[10px] text-[#94A3B8] block mb-1">TARGET FACULTY NAME</label>
+              <label className="text-[10px] text-neutral-600 block mb-1 uppercase font-bold">TARGET FACULTY NAME</label>
               <input
                 type="text"
                 value={facultyName}
                 onChange={(e) => setFacultyName(e.target.value)}
-                className="input-stealth w-full font-mono text-xs"
+                className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
               />
             </div>
 
             <div>
-              <label className="text-[10px] text-[#94A3B8] block mb-1">TARGET MODULE & CODE</label>
+              <label className="text-[10px] text-neutral-600 block mb-1 uppercase font-bold">TARGET MODULE & CODE</label>
               <select
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                className="input-stealth w-full font-mono text-xs"
+                className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
               >
                 <option>CS601 Distributed Core Systems</option>
                 <option>CS602 Computer Networks</option>
@@ -143,20 +143,20 @@ Apex Institute of Technology`
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-[#94A3B8] block mb-1">ABSENCE DATE</label>
+                <label className="text-[10px] text-neutral-600 block mb-1 uppercase font-bold">ABSENCE DATE</label>
                 <input
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="input-stealth w-full font-mono text-xs"
+                  className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[#94A3B8] block mb-1">CATEGORY</label>
+                <label className="text-[10px] text-neutral-600 block mb-1 uppercase font-bold">CATEGORY</label>
                 <select
                   value={reasonCategory}
                   onChange={(e) => setReasonCategory(e.target.value)}
-                  className="input-stealth w-full font-mono text-xs"
+                  className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
                 >
                   <option>Fest / Event Duty</option>
                   <option>Medical Exemption</option>
@@ -167,12 +167,12 @@ Apex Institute of Technology`
             </div>
 
             <div>
-              <label className="text-[10px] text-[#94A3B8] block mb-1">CASUAL REASON (RAW NOTE)</label>
+              <label className="text-[10px] text-neutral-600 block mb-1 uppercase font-bold">CASUAL REASON (RAW NOTE)</label>
               <textarea
                 rows={4}
                 value={informalInput}
                 onChange={(e) => setInformalInput(e.target.value)}
-                className="w-full bg-[#161F30] border border-[#233044] text-[#F8FAFC] rounded p-3 outline-none focus:border-[#6366F1] font-sans text-xs leading-relaxed"
+                className="w-full bg-amber-50/50 border border-amber-200/80 text-neutral-900 rounded-2xl p-3.5 outline-none focus:border-[#FF6B4B] focus:ring-2 focus:ring-orange-200 font-sans text-xs leading-relaxed"
                 placeholder="Type your casual reason here..."
               />
             </div>
@@ -181,7 +181,7 @@ Apex Institute of Technology`
           <button
             onClick={handleSynthesize}
             disabled={isGenerating}
-            className="btn-primary w-full py-2.5 text-xs font-mono font-bold uppercase flex items-center justify-center space-x-2"
+            className="btn-primary w-full py-3 text-xs font-mono font-bold uppercase flex items-center justify-center space-x-2 shadow-md"
           >
             <Sparkles className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
             <span>{isGenerating ? 'Synthesizing Formal Email...' : 'Synthesize Formal Application'}</span>
@@ -189,17 +189,17 @@ Apex Institute of Technology`
         </div>
 
         {/* Right Output Draft */}
-        <div className="lg:col-span-7 stealth-card p-6 space-y-4 flex flex-col justify-between">
+        <div className="lg:col-span-7 stealth-card p-6 space-y-4 flex flex-col justify-between bg-white border border-amber-100 rounded-3xl shadow-sm">
           <div className="space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#233044]">
+            <div className="flex items-center justify-between pb-3 border-b border-amber-100">
               <div>
-                <span className="text-[10px] font-mono text-[#10B981] uppercase tracking-wider block">AI GENERATED DRAFT</span>
-                <h3 className="font-jakarta font-bold text-white text-base">Polished Faculty Application</h3>
+                <span className="text-[10px] font-mono text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">AI GENERATED DRAFT</span>
+                <h3 className="font-jakarta font-bold text-neutral-900 text-base mt-1">Polished Faculty Application</h3>
               </div>
 
               <button
                 onClick={handleCopy}
-                className="btn-stealth px-3 py-1.5 text-xs font-mono flex items-center space-x-1"
+                className="btn-stealth px-3.5 py-1.5 text-xs font-mono flex items-center space-x-1.5 font-bold shadow-xs"
               >
                 <Copy className="w-3.5 h-3.5" />
                 <span>{copied ? 'Copied to Clipboard!' : 'Copy Draft'}</span>
@@ -207,31 +207,31 @@ Apex Institute of Technology`
             </div>
 
             {/* Subject line box */}
-            <div className="bg-[#161F30] border border-[#233044] rounded p-3 space-y-1">
-              <span className="text-[10px] font-mono text-[#64748B] uppercase block">EMAIL SUBJECT LINE</span>
-              <p className="font-mono text-xs font-bold text-[#6BD8CB] tnum">{generatedEmail.subject}</p>
+            <div className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3.5 space-y-1">
+              <span className="text-[10px] font-mono text-neutral-500 uppercase font-bold block">EMAIL SUBJECT LINE</span>
+              <p className="font-mono text-xs font-bold text-[#FF6B4B] tnum">{generatedEmail.subject}</p>
             </div>
 
             {/* Body Box */}
-            <div className="bg-[#161F30] border border-[#233044] rounded p-4 space-y-2">
-              <span className="text-[10px] font-mono text-[#64748B] uppercase block mb-1">EMAIL BODY</span>
-              <pre className="font-sans text-xs text-[#DFE2F1] leading-relaxed whitespace-pre-wrap font-normal">
+            <div className="bg-amber-50/50 border border-amber-200/70 rounded-2xl p-4.5 space-y-2">
+              <span className="text-[10px] font-mono text-neutral-500 uppercase font-bold block mb-1">EMAIL BODY</span>
+              <pre className="font-sans text-xs text-neutral-800 leading-relaxed whitespace-pre-wrap font-medium">
                 {generatedEmail.body}
               </pre>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-[#233044] flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-            <span className="text-[#94A3B8] text-xs">
+          <div className="pt-4 border-t border-amber-100 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+            <span className="text-neutral-500 text-xs font-medium">
               This is a draft — please review before sending.
             </span>
 
             <div className="flex items-center space-x-2">
               <a
                 href={`mailto:faculty@apex.edu?subject=${encodeURIComponent(generatedEmail.subject)}&body=${encodeURIComponent(generatedEmail.body)}`}
-                className="btn-primary px-3.5 py-1.5 text-xs font-mono uppercase flex items-center space-x-1.5"
+                className="btn-primary px-4 py-2 text-xs font-mono uppercase flex items-center space-x-2 font-bold shadow-md"
               >
-                <Mail className="w-3.5 h-3.5" />
+                <Mail className="w-4 h-4" />
                 <span>Open in Mail Client</span>
               </a>
             </div>

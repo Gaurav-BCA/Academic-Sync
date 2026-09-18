@@ -4,14 +4,15 @@
 
 @layer base {
   body {
-    background-color: #0F131D;
-    color: #DFE2F1;
+    background-color: #FFF9F2;
+    color: #1E1E1E;
     font-family: 'Inter', system-ui, sans-serif;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
     letter-spacing: -0.02em;
+    color: #1E1E1E;
   }
 }
 
@@ -21,122 +22,115 @@
   font-feature-settings: "tnum";
 }
 
-/* Custom stealth scrollbar */
+/* Custom smooth pastel scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0F131D;
+  background: #FFF9F2;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #233044;
-  border-radius: 2px;
+  background: #FED7AA;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3E506B;
+  background: #FDBA74;
 }
 
-/* Level 2 Metric Card - Tonal surface stacking with 1px border */
+/* Level 2 Metric Card - Warm Pastel Light Card Surface */
 .stealth-card {
-  background-color: #1A2438;
-  border: 1px solid #233044;
-  border-radius: 0.5rem; /* 8px */
+  background-color: #FFFFFF;
+  border: 1px solid #F1E5D8;
+  border-radius: 1.25rem; /* 20px */
   position: relative;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 10px 25px -5px rgba(251, 146, 60, 0.05), 0 4px 10px -2px rgba(0, 0, 0, 0.02);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-/* Hover: no lift/float, subtle top border trace */
+/* Hover: gentle floating elevation with soft coral/orange glow trace */
 .stealth-card:hover {
-  border-color: #3E506B;
+  border-color: #FBD5B5;
+  box-shadow: 0 15px 30px -5px rgba(255, 107, 75, 0.08), 0 8px 15px -3px rgba(0, 0, 0, 0.03);
 }
 
-.stealth-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.4) 0%, rgba(139, 92, 246, 0.4) 50%, transparent 100%);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  border-top-left-radius: 0.5rem;
-  border-top-right-radius: 0.5rem;
-}
-
-.stealth-card:hover::before {
-  opacity: 1;
-}
-
-/* Level 3 Popovers & Modals */
+/* Level 3 Popovers & Modals - Crisp White Surface */
 .stealth-modal {
-  background-color: #1E293B;
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  background-color: #FFFFFF;
+  border: 1px solid #F3E8DC;
+  border-radius: 1.5rem; /* 24px */
+  box-shadow: 0 25px 50px -12px rgba(180, 83, 9, 0.12), 0 10px 20px -5px rgba(0, 0, 0, 0.04);
 }
 
-/* Stealth Primary Button */
+/* Primary Coral Orange Pill Button */
 .btn-primary {
-  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  background: linear-gradient(135deg, #FF6B4B 0%, #FF5533 100%);
   color: #FFFFFF;
-  border-radius: 0.25rem; /* 4px */
+  border-radius: 9999px; /* Pill shape */
   font-weight: 600;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 4px 14px 0 rgba(255, 107, 75, 0.35);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-primary:hover {
-  opacity: 0.92;
+  background: linear-gradient(135deg, #FF5533 0%, #E63E1C 100%);
+  box-shadow: 0 6px 18px 0 rgba(255, 107, 75, 0.45);
+  transform: translateY(-1px) scale(1.01);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
 }
 
 .btn-primary:focus {
   outline: none;
-  box-shadow: 0 0 0 2px #0F131D, 0 0 0 4px #6366F1;
+  box-shadow: 0 0 0 3px rgba(255, 107, 75, 0.3);
 }
 
-/* Stealth / Secondary Button */
+/* Warm Secondary Pill Button */
 .btn-stealth {
-  background-color: #161F30;
-  border: 1px solid #233044;
-  color: #94A3B8;
-  border-radius: 0.25rem;
-  font-weight: 500;
-  transition: all 0.15s ease;
+  background-color: #FFF3E9;
+  border: 1px solid #FED7AA;
+  color: #EA580C;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: all 0.2s ease;
 }
 
 .btn-stealth:hover {
-  background-color: #1E293B;
-  color: #F8FAFC;
-  border-color: #3E506B;
+  background-color: #FFE4D6;
+  color: #C2410C;
+  border-color: #FDBA74;
 }
 
-/* Stealth Input Field */
+/* Warm Soft Input Field */
 .input-stealth {
-  background-color: #161F30;
-  border: 1px solid #233044;
-  color: #F8FAFC;
-  height: 36px;
-  border-radius: 0.25rem;
-  padding-left: 0.75rem;
-  padding-right: 0.75rem;
+  background-color: #FAFAF9;
+  border: 1px solid #E7E5E4;
+  color: #1C1917;
+  height: 42px;
+  border-radius: 0.875rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
   font-size: 0.875rem;
-  transition: border-color 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .input-stealth::placeholder {
-  color: #64748B;
+  color: #A8A29E;
 }
 
 .input-stealth:focus {
   outline: none;
-  border-color: #6366F1;
+  background-color: #FFFFFF;
+  border-color: #FF6B4B;
+  box-shadow: 0 0 0 3px rgba(255, 107, 75, 0.15);
 }
 
-/* Pulse animation for radar telemetry beacon */
+/* Pulse animation for live status radar beacon */
 @keyframes radar-ping {
   0% {
     transform: scale(0.95);
@@ -155,8 +149,8 @@
 .radar-dot {
   position: relative;
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 9999px;
   background-color: #10B981;
 }
