@@ -1,17 +1,29 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { HeaderNav } from './components/HeaderNav';
 import { Footer } from './components/Footer';
 import { OverviewGateScreen } from './screens/OverviewGateScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
-import { ReconcileScreen } from './screens/ReconcileScreen';
-import { LeaderboardScreen } from './screens/LeaderboardScreen';
-import { AIWelfareScreen } from './screens/AIWelfareScreen';
-import { ManageStudentsScreen } from './screens/ManageStudentsScreen';
 import { SmartCheckModal } from './components/modals/SmartCheckModal';
 import { OnboardingProvider, useOnboarding } from './context/OnboardingContext';
 import { AppProvider, useApp } from './context/AppContext';
-import { ProtectedRoute, OnboardingRoute } from './components/ProtectedRoute';
+import { ProtectedRoute, OnboardingRoute, StudentRoute, CoordinatorRoute } from './components/ProtectedRoute';
+
+// Lazy loaded secondary route components for bundle optimization
+const ReconcileScreen = lazy(() => import('./screens/ReconcileScreen').then(m => ({ default: m.ReconcileScreen })));
+const LeaderboardScreen = lazy(() => import('./screens/LeaderboardScreen').then(m => ({ default: m.LeaderboardScreen })));
+const AIWelfareScreen = lazy(() => import('./screens/AIWelfareScreen').then(m => ({ default: m.AIWelfareScreen })));
+const ManageStudentsScreen = lazy(() => import('./screens/ManageStudentsScreen').then(m => ({ default: m.ManageStudentsScreen })));
+
+// Route Loading Fallback Skeleton Component
+function RouteLoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4 font-sans text-neutral-600 animate-fade-in">
+      <div className="w-12 h-12 rounded-full border-4 border-amber-200 border-t-[#FF6B4B] animate-spin" />
+      <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#FF6B4B]">Loading Workspace...</span>
+    </div>
+  );
+}
 
 function AppShell() {
   const { isOnboarded } = useOnboarding();
@@ -29,67 +41,76 @@ function AppShell() {
         <HeaderNav onOpenVotingModal={openCheckInModal} />
       )}
 
-
       {/* Main container */}
       <main className="max-w-7xl mx-auto px-4 lg:px-8 w-full flex-grow py-4">
-        <Routes>
-          {/* ── Onboarding routes: redirect to /dashboard if already onboarded ── */}
-          <Route
-            path="/"
-            element={
-              <OnboardingRoute>
-                <OverviewGateScreen />
-              </OnboardingRoute>
-            }
-          />
-          {/* /timetable is no longer a standalone page — redirect to /dashboard */}
-          <Route path="/timetable" element={<Navigate to="/dashboard" replace />} />
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            {/* ── Onboarding routes: redirect to /dashboard if already onboarded ── */}
+            <Route
+              path="/"
+              element={
+                <OnboardingRoute>
+                  <OverviewGateScreen />
+                </OnboardingRoute>
+              }
+            />
+            {/* /timetable is no longer a standalone page — redirect to /dashboard */}
+            <Route path="/timetable" element={<Navigate to="/dashboard" replace />} />
 
-          {/* ── Protected routes: redirect to "/" if not yet onboarded ── */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardScreen onOpenVotingModal={openCheckInModal} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/reconcile"
-            element={
-              <ProtectedRoute>
-                <ReconcileScreen />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/leaderboard"
-            element={
-              <ProtectedRoute>
-                <LeaderboardScreen />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/welfare"
-            element={
-              <ProtectedRoute>
-                <AIWelfareScreen />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/manage"
-            element={
-              <ProtectedRoute>
-                <ManageStudentsScreen />
-              </ProtectedRoute>
-            }
-          />
+            {/* ── Protected routes: redirect to "/" if not yet onboarded ── */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardScreen onOpenVotingModal={openCheckInModal} />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reconcile"
+              element={
+                <StudentRoute>
+                  <ReconcileScreen />
+                </StudentRoute>
+              }
+            />
+            <Route
+              path="/leaderboard"
+              element={
+                <StudentRoute>
+                  <LeaderboardScreen />
+                </StudentRoute>
+              }
+            />
+            <Route
+              path="/welfare"
+              element={
+                <StudentRoute>
+                  <AIWelfareScreen />
+                </StudentRoute>
+              }
+            />
+            <Route
+              path="/manage"
+              element={
+                <CoordinatorRoute>
+                  <ManageStudentsScreen />
+                </CoordinatorRoute>
+              }
+            />
+            <Route
+              path="/manage-students"
+              element={
+                <CoordinatorRoute>
+                  <ManageStudentsScreen />
+                </CoordinatorRoute>
+              }
+            />
 
-          {/* Fallback: redirect unknown routes to overview */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Fallback: redirect unknown routes to overview */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {/* Geofenced Smart Check Modal Overlay */}

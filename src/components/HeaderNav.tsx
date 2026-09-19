@@ -31,29 +31,30 @@ interface HeaderNavProps {
 export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userRole, setUserRole, userProfile, resetOnboarding } = useApp();
-  const { resetOnboarding: resetOnboardingContext } = useOnboarding();
+  const { userRole, userProfile, resetOnboarding } = useApp();
+  const { isOnboarded, studentProfile, coordinatorProfile, resetOnboarding: resetOnboardingContext } = useOnboarding();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const activeTab: ScreenTab = PATH_TO_TAB[location.pathname] ?? 'dashboard';
   const isCoordinator = userRole === 'coordinator';
 
-  const navItems: { id: ScreenTab; label: string }[] = [
-    { id: 'dashboard',   label: 'Dashboard' },
-    { id: 'reconcile',   label: 'Reconcile' },
-    { id: 'leaderboard', label: 'Leaderboard' },
-    { id: 'welfare',     label: 'AI Tools' },
-    ...(isCoordinator ? [{ id: 'manage' as ScreenTab, label: 'Manage Students' }] : []),
-  ];
+  // Dynamic user profile name resolution
+  const activeName = (isCoordinator ? coordinatorProfile?.fullName : studentProfile?.fullName) || userProfile.fullName || 'User';
+  const activeClassCode = userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-8849';
 
-  const toggleRole = () => {
-    const nextRole = isCoordinator ? 'student' : 'coordinator';
-    setUserRole(nextRole);
-    if (nextRole === 'student' && location.pathname === '/manage') {
-      navigate('/dashboard');
-    }
-  };
+  // Strict Role-Based Navigation items
+  const navItems: { id: ScreenTab; label: string }[] = isCoordinator
+    ? [
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'manage',    label: 'Manage Students' },
+      ]
+    : [
+        { id: 'dashboard',   label: 'Dashboard' },
+        { id: 'reconcile',   label: 'Reconcile' },
+        { id: 'leaderboard', label: 'Leaderboard' },
+        { id: 'welfare',     label: 'AI Tools' },
+      ];
 
   const handleSignOut = async () => {
     try {
@@ -79,7 +80,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
             </div>
             <span className="font-jakarta font-bold text-neutral-900 text-base tracking-tight">Academic-Sync</span>
             <span className="hidden sm:inline text-[11px] font-mono font-semibold text-amber-900/70 bg-amber-100/60 border border-amber-200 px-2.5 py-0.5 rounded-full tnum">
-              {userProfile.classCode || 'CS-2025-A'}
+              {activeClassCode}
             </span>
           </div>
 
@@ -100,43 +101,44 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
             ))}
           </nav>
 
-          {/* Right: Role Switcher + GPS Pill + Profile Avatar Dropdown */}
+          {/* Right: Locked Role Badge + GPS Pill + Profile Avatar Dropdown */}
           <div className="flex items-center space-x-2.5 shrink-0">
-            {/* Quick Role Switcher Toggle */}
-            <button
-              onClick={toggleRole}
-              title="Click to toggle between Student and Class Coordinator views"
-              className={`px-3 py-1 rounded-full text-[11px] font-mono font-bold uppercase transition-all flex items-center space-x-1 border shadow-xs ${
+            {/* Session Locked Role Badge */}
+            <div
+              title={`Role locked to current session: ${isCoordinator ? 'Class Coordinator' : 'Student'}`}
+              className={`px-3.5 py-1 rounded-full text-[11px] font-mono font-bold uppercase transition-all flex items-center space-x-1 border shadow-xs ${
                 isCoordinator 
-                  ? 'bg-purple-100/80 text-purple-800 border-purple-200 hover:bg-purple-200/80' 
-                  : 'bg-indigo-100/80 text-indigo-800 border-indigo-200 hover:bg-indigo-200/80'
+                  ? 'bg-purple-100/80 text-purple-800 border-purple-200' 
+                  : 'bg-indigo-100/80 text-indigo-800 border-indigo-200'
               }`}
             >
-              <span>Role: {isCoordinator ? 'Coordinator' : 'Student'}</span>
-            </button>
+              <span>ROLE: {isCoordinator ? 'COORDINATOR' : 'STUDENT'}</span>
+            </div>
 
-            {/* Minimal GPS / check-in trigger — green pulse pill */}
-            <button
-              onClick={onOpenVotingModal}
-              title="Open Live Check-In"
-              className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-700 hover:bg-emerald-100/80 transition-colors"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              <span className="text-[11px] font-mono font-bold hidden sm:inline">GPS</span>
-            </button>
+            {/* Minimal GPS / check-in trigger — green pulse pill (ONLY FOR STUDENTS) */}
+            {!isCoordinator && (
+              <button
+                onClick={onOpenVotingModal}
+                title="Open Live Check-In"
+                className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-700 hover:bg-emerald-100/80 transition-colors"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="text-[11px] font-mono font-bold hidden sm:inline">GPS</span>
+              </button>
+            )}
 
             {/* Profile Avatar with Interactive Dropdown Menu */}
             <div className="relative">
               <button
                 onClick={() => setIsMenuOpen(prev => !prev)}
                 className="relative group focus:outline-none block"
-                title={`${userProfile.fullName || 'Gaurav Bisht'} (${userProfile.rollNumber || '21CS045'})`}
+                title={`${activeName} (${isCoordinator ? 'Class Coordinator' : (studentProfile?.rollNumber || userProfile.rollNumber || 'Student ID')})`}
               >
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 border border-orange-200 flex items-center justify-center text-[#FF6B4B] font-bold text-sm shadow-xs hover:border-[#FF6B4B] transition-colors">
-                  {(userProfile.fullName || 'G').charAt(0).toUpperCase()}
+                  {(activeName || 'U').charAt(0).toUpperCase()}
                 </div>
                 <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white" />
               </button>
@@ -147,17 +149,19 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
                   {/* Profile Header */}
                   <div className="flex items-center space-x-3 pb-3 border-b border-amber-100">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF6B4B] to-[#FF5533] flex items-center justify-center text-white font-bold font-jakarta text-base shadow-sm">
-                      {(userProfile.fullName || 'G').charAt(0).toUpperCase()}
+                      {(activeName || 'U').charAt(0).toUpperCase()}
                     </div>
                     <div className="overflow-hidden flex-1">
                       <h4 className="font-jakarta font-bold text-neutral-900 text-sm truncate">
-                        {userProfile.fullName || 'Gaurav Bisht'}
+                        {activeName}
                       </h4>
                       <p className="text-[11px] font-mono text-neutral-500 truncate">
-                        {isCoordinator ? 'Class Coordinator' : (userProfile.rollNumber || '21CS045')}
+                        {isCoordinator 
+                          ? (coordinatorProfile?.email || userProfile.email || 'coordinator@inst.edu') 
+                          : `Roll: ${studentProfile?.rollNumber || userProfile.rollNumber || '21CS045'}`}
                       </p>
                       <span className="inline-block text-[9px] font-mono uppercase bg-orange-100 text-[#FF6B4B] px-2 py-0.5 rounded-full mt-1 font-bold">
-                        {userRole === 'coordinator' ? 'Coordinator Badge' : 'Student Account'}
+                        {isCoordinator ? 'Coordinator' : 'Student Account'}
                       </span>
                     </div>
                   </div>
@@ -166,10 +170,10 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
                   <div className="text-[11px] font-mono text-neutral-600 space-y-1.5">
                     <div className="flex justify-between">
                       <span className="text-neutral-500">Batch Code:</span>
-                      <span className="text-neutral-900 font-bold tnum">{userProfile.classCode || 'CS-8849'}</span>
+                      <span className="text-neutral-900 font-bold tnum">{activeClassCode}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-neutral-500">Active Role:</span>
+                      <span className="text-neutral-500">Session Role:</span>
                       <span className="text-emerald-700 font-bold uppercase">{userRole}</span>
                     </div>
                   </div>

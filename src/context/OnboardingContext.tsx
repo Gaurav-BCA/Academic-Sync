@@ -88,7 +88,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (user) {
         setIsOnboarded(true);
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
+
           if (userDoc.exists()) {
             const data = userDoc.data();
             const role = data.role === 'coordinator' ? 'coordinator' : 'student';
@@ -101,7 +103,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 uid: user.uid,
                 email: user.email || data.email || '',
                 fullName: data.name || data.fullName || 'Student',
-                rollNumber: data.rollNumber || '',
+                rollNumber: data.rollNumber || '21CS045',
                 classCode: data.classCode || 'CS-8849'
               };
               setStudentProfile(profile);
@@ -110,12 +112,48 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               const profile: CoordinatorProfile = {
                 uid: user.uid,
                 email: user.email || data.email || '',
-                fullName: data.name || data.fullName || 'Coordinator',
+                fullName: data.name || data.fullName || 'Class Coordinator',
                 institution: data.institution || 'Apex Inst. of Tech',
                 branch: data.branch || 'Computer Science & Eng',
                 semester: data.term || data.semester || 'Sem VI',
                 term: data.term || data.semester || 'Sem VI',
-                classCode: data.classCode
+                classCode: data.classCode || 'CS-8849'
+              };
+              setCoordinatorProfile(profile);
+              localStorage.setItem(LS_KEY_COORDINATOR, JSON.stringify(profile));
+            }
+          } else {
+            // Document missing (e.g. wiped DB) -> Reconstruct profile gracefully from Auth metadata
+            const storedRole = localStorage.getItem(LS_KEY_ROLE) === 'coordinator' ? 'coordinator' : 'student';
+            const rawEmail = user.email || '';
+            const derivedName = user.displayName?.trim() || (rawEmail.includes('@')
+              ? rawEmail.split('@')[0].replace(/[._-]/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+              : 'User');
+
+            setUserRole(storedRole);
+            localStorage.setItem(LS_KEY_ONBOARDED, 'true');
+            localStorage.setItem(LS_KEY_ROLE, storedRole);
+
+            if (storedRole === 'student') {
+              const profile: StudentProfile = {
+                uid: user.uid,
+                email: rawEmail,
+                fullName: derivedName,
+                rollNumber: '21CS045',
+                classCode: 'CS-8849'
+              };
+              setStudentProfile(profile);
+              localStorage.setItem(LS_KEY_STUDENT, JSON.stringify(profile));
+            } else {
+              const profile: CoordinatorProfile = {
+                uid: user.uid,
+                email: rawEmail,
+                fullName: derivedName,
+                institution: 'Apex Inst. of Tech',
+                branch: 'Computer Science & Eng',
+                semester: 'Sem VI',
+                term: 'Sem VI',
+                classCode: 'CS-8849'
               };
               setCoordinatorProfile(profile);
               localStorage.setItem(LS_KEY_COORDINATOR, JSON.stringify(profile));

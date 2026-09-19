@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Radio, 
   Sliders, 
   ChevronDown,
   ChevronUp,
   Calendar,
-  Grid
+  Grid,
+  Users
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -16,8 +18,9 @@ import {
   Tooltip, 
   ReferenceLine 
 } from 'recharts';
-import { TODAY_SEQUENCE, TIMETABLE_MATRIX } from '../data/mockData';
+import { TIMETABLE_MATRIX } from '../data/mockData';
 import { useApp } from '../context/AppContext';
+import { useOnboarding } from '../context/OnboardingContext';
 
 interface DashboardScreenProps {
   onOpenVotingModal: () => void;
@@ -77,9 +80,14 @@ const HeroCircularMeter: React.FC<{ percentage: number; size?: number }> = ({ pe
 };
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingModal }) => {
-  const { subjects, userProfile, todayTimetable } = useApp();
+  const navigate = useNavigate();
+  const { subjects, userRole, userProfile, todayTimetable } = useApp();
+  const { studentProfile, coordinatorProfile } = useOnboarding();
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('cs601');
   const [skipCount, setSkipCount] = useState<number>(3);
+
+  const isCoordinator = userRole === 'coordinator';
+  const activeClassCode = userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-8849';
 
   // Dynamic day calculation for schedule header
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -89,31 +97,44 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
   const currentDayCode = daysOfWeek[new Date().getDay()];
   const currentDayFull = fullDays[currentDayCode] || 'Today';
 
-  // Compute active schedule sequence from Firestore todayTimetable or fallback
-  const scheduleItems = (todayTimetable && todayTimetable.length > 0) ? todayTimetable.map((slot: any, idx: number) => ({
-    id: slot.id || `slot-${idx}`,
-    time: slot.time || '09:00 AM - 10:00 AM',
-    room: slot.room || 'LH-302',
-    subjectCode: slot.subjectCode || 'CS-601',
-    subjectName: slot.subjectName || 'Distributed Systems',
-    faculty: slot.faculty || 'Dr. R. Sharma',
-    status: idx === 0 ? 'conducted_consensus' : idx === 1 ? 'awaiting_check' : 'scheduled',
-    statusText: idx === 0 ? 'Real-Time Consensus Verified' : idx === 1 ? 'Active Geo-Fence Check Window' : 'Scheduled Lecture Window',
-    subText: 'Synced with Firestore Batch Schedule'
-  })) : TODAY_SEQUENCE;
+  // Compute active schedule sequence dynamically from Firestore todayTimetable
+  const scheduleItems = useMemo(() => {
+    if (!todayTimetable || !Array.isArray(todayTimetable) || todayTimetable.length === 0) {
+      return [];
+    }
+    return todayTimetable.map((slot: any, idx: number) => ({
+      id: slot.id || `slot-${idx}`,
+      time: slot.time || '09:00 AM - 10:00 AM',
+      room: slot.room || slot.location || 'LH-302',
+      subjectCode: slot.code || slot.subjectCode || 'BCA-512',
+      subjectName: slot.subject || slot.name || slot.subjectName || 'Class Session',
+      faculty: slot.faculty || 'Faculty Instructor',
+      status: slot.status || (idx === 0 ? 'conducted_gps' : 'upcoming'),
+      statusText: slot.statusText || 'Parsed Batch Routine',
+      subText: slot.subText || ''
+    }));
+  }, [todayTimetable]);
 
   // Dynamic overall attendance math
-  const totalAttendedAll = subjects.reduce((acc, s) => acc + s.attended, 0);
-  const totalClassesAll = subjects.reduce((acc, s) => acc + s.total, 0);
-  const overallPercentage = totalClassesAll > 0 ? Number(((totalAttendedAll / totalClassesAll) * 100).toFixed(1)) : 81.4;
-  const totalBufferHeadroom = subjects.reduce((acc, s) => acc + Math.max(0, s.bufferHeadroom), 0);
+  const { totalAttendedAll, totalClassesAll, overallPercentage, totalBufferHeadroom } = useMemo(() => {
+    const attended = subjects.reduce((acc, s) => acc + s.attended, 0);
+    const total = subjects.reduce((acc, s) => acc + s.total, 0);
+    const pct = total > 0 ? Number(((attended / total) * 100).toFixed(1)) : 81.4;
+    const buffer = subjects.reduce((acc, s) => acc + Math.max(0, s.bufferHeadroom), 0);
+    return {
+      totalAttendedAll: attended,
+      totalClassesAll: total,
+      overallPercentage: pct,
+      totalBufferHeadroom: buffer
+    };
+  }, [subjects]);
 
   // Progressive Disclosure State
   const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null);
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
   const [showAdvancedTools, setShowAdvancedTools] = useState<boolean>(false);
 
-  const selectedSubject = subjects.find(s => s.id === selectedSubjectId) || subjects[0];
+  const selectedSubject = useMemo(() => subjects.find(s => s.id === selectedSubjectId) || subjects[0], [subjects, selectedSubjectId]);
 
   // Calculate What-If Projected Percentage
   const currentAttended = selectedSubject.attended;
@@ -162,43 +183,90 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
   const streakChartData = generateStreakChartData();
 
   return (
-    <div className="space-y-8 py-4 max-w-[1280px] mx-auto">
+    <div className="space-y-8 md:space-y-10 py-6 max-w-[1280px] mx-auto font-sans">
       
-      {/* 1. HERO ATTENDANCE CARD — Dominant Single Metric */}
-      <section className="stealth-card p-6 md:p-8 border border-amber-100 shadow-xl shadow-amber-900/5 bg-white rounded-3xl relative overflow-hidden">
-        <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
-          
-          {/* Left: Overall Status Headline & Actionable Forecast */}
-          <div className="space-y-3 text-center md:text-left flex-1">
-            <div className="inline-flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 rounded-full text-xs font-mono text-emerald-800">
-              <span className="radar-dot" />
-              <span className="tnum font-bold">ATTENDANCE HEALTH: {overallPercentage >= 75 ? 'OPTIMAL' : 'WARNING'}</span>
-            </div>
+      {/* 1. HERO ATTENDANCE / BATCH OVERVIEW CARD */}
+      {isCoordinator ? (
+        <section className="stealth-card p-6 sm:p-8 md:p-10 border border-purple-200 shadow-xl shadow-purple-900/5 bg-white rounded-3xl relative overflow-hidden">
+          <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
+            <div className="space-y-3 text-center md:text-left flex-1">
+              <div className="inline-flex items-center space-x-2 bg-purple-50 border border-purple-200 px-3.5 py-1 rounded-full text-xs font-mono text-purple-800">
+                <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+                <span className="font-bold uppercase">Coordinator Hub • Active Batch {activeClassCode}</span>
+              </div>
 
-            <h1 className="text-3xl md:text-4xl font-jakarta font-bold text-neutral-900 tracking-tight">
-              Overall Attendance: <span className="text-[#FF6B4B] tnum">{overallPercentage}%</span>
-            </h1>
+              <h1 className="text-3xl md:text-4xl font-jakarta font-bold text-neutral-900 tracking-tight">
+                Batch Schedule & Roster Overview
+              </h1>
 
-            <p className="text-base text-neutral-600 leading-relaxed max-w-xl font-sans">
-              Welcome back, <strong className="text-neutral-900 font-bold">{userProfile.fullName || 'Gaurav Bisht'}</strong> ({userProfile.rollNumber || '21CS045'}). You have <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 tnum">{totalBufferHeadroom} safe skips</span> remaining across all subjects before reaching the mandatory 75% limit.
-            </p>
+              <p className="text-base text-neutral-600 leading-relaxed max-w-xl font-sans">
+                Welcome back, <strong className="text-neutral-900 font-bold">{coordinatorProfile?.fullName || userProfile.fullName || 'Class Coordinator'}</strong>. Managing live schedule routine and attendance roster for <strong>{coordinatorProfile?.institution || userProfile.institution || 'Apex Inst. of Tech'}</strong> ({coordinatorProfile?.branch || userProfile.branch || 'Computer Science & Eng'}).
+              </p>
 
-            <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono">
-              <button
-                onClick={onOpenVotingModal}
-                className="btn-primary px-5 py-2.5 text-xs font-mono uppercase flex items-center space-x-2 shadow-md shadow-orange-500/20"
-              >
-                <Radio className="w-4 h-4" />
-                <span>Check In To Live Class</span>
-              </button>
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 max-w-xl">
+                <div className="bg-purple-50/70 border border-purple-100 p-3 rounded-2xl">
+                  <span className="text-[10px] font-mono uppercase text-purple-700 font-bold block">Class Code</span>
+                  <span className="text-lg font-jakarta font-bold text-neutral-900 tnum">{activeClassCode}</span>
+                </div>
+                <div className="bg-amber-50/70 border border-amber-100 p-3 rounded-2xl">
+                  <span className="text-[10px] font-mono uppercase text-amber-800 font-bold block">Enrolled Roster</span>
+                  <span className="text-lg font-jakarta font-bold text-neutral-900 tnum">Live Sync</span>
+                </div>
+                <div className="bg-emerald-50/70 border border-emerald-100 p-3 rounded-2xl">
+                  <span className="text-[10px] font-mono uppercase text-emerald-800 font-bold block">Today's Routine</span>
+                  <span className="text-lg font-jakarta font-bold text-neutral-900 tnum">{scheduleItems.length} Classes</span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono">
+                <button
+                  onClick={() => navigate('/manage')}
+                  className="px-5 py-2.5 bg-[#FF6B4B] hover:bg-[#FF5533] text-white rounded-full font-mono uppercase font-bold text-xs flex items-center space-x-2 shadow-md shadow-orange-500/20 transition-all"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Open Manage Students Roster</span>
+                </button>
+              </div>
             </div>
           </div>
+        </section>
+      ) : (
+        <section className="stealth-card p-6 md:p-8 border border-amber-100 shadow-xl shadow-amber-900/5 bg-white rounded-3xl relative overflow-hidden">
+          <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
+            
+            {/* Left: Overall Status Headline & Actionable Forecast */}
+            <div className="space-y-3 text-center md:text-left flex-1">
+              <div className="inline-flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 rounded-full text-xs font-mono text-emerald-800">
+                <span className="radar-dot" />
+                <span className="tnum font-bold">ATTENDANCE HEALTH: {overallPercentage >= 75 ? 'OPTIMAL' : 'WARNING'}</span>
+              </div>
 
-          {/* Right: Large Hero Meter */}
-          <HeroCircularMeter percentage={overallPercentage} size={150} />
+              <h1 className="text-3xl md:text-4xl font-jakarta font-bold text-neutral-900 tracking-tight">
+                Overall Attendance: <span className="text-[#FF6B4B] tnum">{overallPercentage}%</span>
+              </h1>
 
-        </div>
-      </section>
+              <p className="text-base text-neutral-600 leading-relaxed max-w-xl font-sans">
+                Welcome back, <strong className="text-neutral-900 font-bold">{studentProfile?.fullName || userProfile.fullName || 'Student'}</strong> ({studentProfile?.rollNumber || userProfile.rollNumber || 'Student ID'}). You have <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 tnum">{totalBufferHeadroom} safe skips</span> remaining across all subjects before reaching the mandatory 75% limit.
+              </p>
+
+              <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono">
+                <button
+                  onClick={onOpenVotingModal}
+                  className="btn-primary px-5 py-2.5 text-xs font-mono uppercase flex items-center space-x-2 shadow-md shadow-orange-500/20"
+                >
+                  <Radio className="w-4 h-4" />
+                  <span>Check In To Live Class</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Right: Large Hero Meter */}
+            <HeroCircularMeter percentage={overallPercentage} size={150} />
+
+          </div>
+        </section>
+      )}
 
       {/* 2. TODAY'S SCHEDULE — Simplified Vertical List */}
       <section className="space-y-4">
@@ -212,369 +280,389 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
         </div>
 
         <div className="space-y-3">
-          {scheduleItems.map((item: any) => {
-            const isExpanded = expandedScheduleId === item.id;
-            return (
-              <div 
-                key={item.id}
-                className="bg-white border border-amber-100 hover:border-orange-200 rounded-2xl p-4.5 shadow-sm transition-all hover:shadow-md"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  {/* Class Info */}
-                  <div className="flex items-center space-x-4">
-                    <div className="text-xs font-mono font-bold text-neutral-600 w-24 shrink-0 tnum bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full text-center">
-                      {item.time.split('-')[0].trim()}
-                    </div>
-                    <div>
-                      <h3 className="font-jakarta font-bold text-neutral-900 text-base">
-                        {item.subjectName} <span className="text-xs font-mono text-neutral-500 font-semibold">({item.subjectCode})</span>
-                      </h3>
-                      <p className="text-xs text-neutral-500 font-mono mt-0.5">
-                        📍 {item.room} • {item.faculty}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Status Pill & Expand Details Toggle */}
-                  <div className="flex items-center space-x-3">
-                    <span className={`text-xs font-mono px-3 py-1 rounded-full font-bold border ${
-                      item.status === 'conducted_gps' || item.status === 'conducted_consensus'
-                        ? 'bg-emerald-100 border-emerald-200 text-emerald-800'
-                        : item.status === 'awaiting_check'
-                        ? 'bg-amber-100 border-amber-200 text-amber-800'
-                        : 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                    }`}>
-                      {item.status === 'conducted_gps' || item.status === 'conducted_consensus' 
-                        ? 'Conducted' 
-                        : item.status === 'awaiting_check' 
-                        ? 'Awaiting Check' 
-                        : 'Upcoming'}
-                    </span>
-
-                    <button
-                      onClick={() => setExpandedScheduleId(isExpanded ? null : item.id)}
-                      className="text-neutral-500 hover:text-neutral-900 p-1.5 rounded-full hover:bg-amber-50 transition-colors"
-                      title="Toggle details"
-                    >
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Progressive Disclosure: Hidden Details */}
-                {isExpanded && (
-                  <div className="mt-3 pt-3 border-t border-amber-100 text-xs font-mono text-neutral-600 flex flex-wrap items-center justify-between gap-2 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
-                    <div>
-                      <span className="text-neutral-500 uppercase block text-[10px] font-bold">Verification Engine:</span>
-                      <span className="text-neutral-900 font-semibold">{item.statusText}</span>
-                    </div>
-                    {item.subText && (
-                      <div>
-                        <span className="text-neutral-500 uppercase block text-[10px] font-bold">Verification Details:</span>
-                        <span className="text-emerald-700 font-bold tnum">{item.subText}</span>
+          {scheduleItems.length === 0 ? (
+            <div className="bg-amber-50/60 border border-amber-200/80 rounded-3xl py-10 px-8 sm:px-10 text-center space-y-4 shadow-xs">
+              <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-xs">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-jakarta font-bold text-neutral-900 text-lg">No Classes Scheduled For Today</h3>
+                <p className="text-xs font-mono text-neutral-500 max-w-md mx-auto leading-relaxed">
+                  No lectures or laboratory sessions are listed in the {activeClassCode} batch timetable for {currentDayFull}.
+                </p>
+              </div>
+            </div>
+          ) : (
+            scheduleItems.map((item: any) => {
+              const isExpanded = expandedScheduleId === item.id;
+              return (
+                <div 
+                  key={item.id}
+                  className="bg-white border border-amber-100 hover:border-orange-200 rounded-2xl p-4.5 shadow-sm transition-all hover:shadow-md"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    {/* Class Info */}
+                    <div className="flex items-center space-x-4">
+                      <div className="text-xs font-mono font-bold text-neutral-600 w-24 shrink-0 tnum bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full text-center">
+                        {item.time.split('-')[0].trim()}
                       </div>
-                    )}
+                      <div>
+                        <h3 className="font-jakarta font-bold text-neutral-900 text-base">
+                          {item.subjectName} <span className="text-xs font-mono text-neutral-500 font-semibold">({item.subjectCode})</span>
+                        </h3>
+                        <p className="text-xs text-neutral-500 font-mono mt-0.5">
+                          📍 {item.room} • {item.faculty}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Status Pill & Expand Details Toggle */}
+                    <div className="flex items-center space-x-3">
+                      <span className={`text-xs font-mono px-3 py-1 rounded-full font-bold border ${
+                        item.status === 'conducted_gps' || item.status === 'conducted_consensus'
+                          ? 'bg-emerald-100 border-emerald-200 text-emerald-800'
+                          : item.status === 'awaiting_check'
+                          ? 'bg-amber-100 border-amber-200 text-amber-800'
+                          : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                      }`}>
+                        {item.status === 'conducted_gps' || item.status === 'conducted_consensus' 
+                          ? 'Conducted' 
+                          : item.status === 'awaiting_check' 
+                          ? 'Awaiting Check' 
+                          : 'Upcoming'}
+                      </span>
+
+                      <button
+                        onClick={() => setExpandedScheduleId(isExpanded ? null : item.id)}
+                        className="text-neutral-500 hover:text-neutral-900 p-1.5 rounded-full hover:bg-amber-50 transition-colors"
+                        title="Toggle details"
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Progressive Disclosure: Hidden Details */}
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t border-amber-100 text-xs font-mono text-neutral-600 flex flex-wrap items-center justify-between gap-2 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
+                      <div>
+                        <span className="text-neutral-500 uppercase block text-[10px] font-bold">Verification Engine:</span>
+                        <span className="text-neutral-900 font-semibold">{item.statusText}</span>
+                      </div>
+                      {item.subText && (
+                        <div>
+                          <span className="text-neutral-500 uppercase block text-[10px] font-bold">Verification Details:</span>
+                          <span className="text-emerald-700 font-bold tnum">{item.subText}</span>
+                        </div>
+                      )}
+                      {!isCoordinator && (
+                        <button
+                          onClick={onOpenVotingModal}
+                          className="btn-stealth px-3 py-1 text-[10px] uppercase font-mono shadow-xs"
+                        >
+                          Open Live Check Modal
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      {/* 3. SUBJECT ATTENDANCE CARDS — Only for Students */}
+      {!isCoordinator && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between border-b border-amber-200/60 pb-3">
+            <div>
+              <h2 className="text-xl font-jakarta font-bold text-neutral-900">Subject Attendance</h2>
+              <p className="text-xs text-neutral-500 font-mono">Current Semester Courses</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {subjects.map((sub) => {
+              const isCardExpanded = expandedSubjectId === sub.id;
+              return (
+                <div 
+                  key={sub.id}
+                  className={`stealth-card p-6 space-y-4 bg-white border rounded-2xl shadow-sm hover:shadow-md transition-all ${
+                    sub.status === 'critical' 
+                      ? 'border-rose-300 bg-rose-50/20' 
+                      : sub.status === 'warning'
+                      ? 'border-amber-300 bg-amber-50/20'
+                      : 'border-amber-100'
+                  }`}
+                >
+                  {/* Header: Subject & Big Attendance % */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-xs font-mono font-bold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full border border-neutral-200">{sub.code}</span>
+                      <h3 className="text-lg font-jakarta font-bold text-neutral-900 mt-1">{sub.name}</h3>
+                    </div>
+
+                    <div className="text-right">
+                      <span className={`text-3xl font-jakarta font-bold tnum ${
+                        sub.status === 'critical' ? 'text-rose-600' : sub.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'
+                      }`}>
+                        {sub.percentage}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="space-y-1">
+                    <div className="w-full h-2.5 bg-amber-100/60 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          sub.status === 'critical' 
+                            ? 'bg-rose-500' 
+                            : sub.status === 'warning' 
+                            ? 'bg-amber-500' 
+                            : 'bg-gradient-to-r from-[#FF6B4B] to-emerald-500'
+                        }`}
+                        style={{ width: `${sub.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Plain Forecast Line */}
+                  <div className="flex items-center justify-between text-xs font-mono pt-1">
+                    <span className={`font-bold px-2.5 py-0.5 rounded-full text-[11px] border ${
+                      sub.status === 'critical' 
+                        ? 'bg-rose-100 text-rose-800 border-rose-200' 
+                        : sub.status === 'warning' 
+                        ? 'bg-amber-100 text-amber-800 border-amber-200' 
+                        : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    }`}>
+                      {sub.actionableNote}
+                    </span>
+
                     <button
-                      onClick={onOpenVotingModal}
-                      className="btn-stealth px-3 py-1 text-[10px] uppercase font-mono shadow-xs"
+                      onClick={() => setExpandedSubjectId(isCardExpanded ? null : sub.id)}
+                      className="text-neutral-500 hover:text-neutral-900 flex items-center space-x-1 text-[11px] font-semibold hover:underline"
                     >
-                      Open Live Check Modal
+                      <span>{isCardExpanded ? 'Hide Details' : 'Details'}</span>
+                      {isCardExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
 
-      {/* 3. SUBJECT ATTENDANCE CARDS — Clean 2x2 Grid */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between border-b border-amber-200/60 pb-3">
-          <div>
-            <h2 className="text-xl font-jakarta font-bold text-neutral-900">Subject Attendance</h2>
-            <p className="text-xs text-neutral-500 font-mono">Current Semester Courses</p>
+                  {/* Progressive Disclosure: Expanded Technical Card Details */}
+                  {isCardExpanded && (
+                    <div className="pt-3 border-t border-amber-100 text-xs font-mono space-y-2 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
+                      <div className="flex justify-between text-neutral-800">
+                        <span>Classes Attended:</span>
+                        <span className="font-bold tnum">{sub.attended} / {sub.total} Total</span>
+                      </div>
+                      <div className="flex justify-between text-neutral-800">
+                        <span>Course Instructor:</span>
+                        <span>{sub.faculty} ({sub.credits} Credits)</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-700 font-bold">
+                        <span>Buffer Headroom:</span>
+                        <span className="tnum">{sub.bufferHeadroom} Skips</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
+        </section>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {subjects.map((sub) => {
-            const isCardExpanded = expandedSubjectId === sub.id;
-            return (
-              <div 
-                key={sub.id}
-                className={`stealth-card p-6 space-y-4 bg-white border rounded-2xl shadow-sm hover:shadow-md transition-all ${
-                  sub.status === 'critical' 
-                    ? 'border-rose-300 bg-rose-50/20' 
-                    : sub.status === 'warning'
-                    ? 'border-amber-300 bg-amber-50/20'
-                    : 'border-amber-100'
-                }`}
-              >
-                {/* Header: Subject & Big Attendance % */}
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-xs font-mono font-bold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full border border-neutral-200">{sub.code}</span>
-                    <h3 className="text-lg font-jakarta font-bold text-neutral-900 mt-1">{sub.name}</h3>
-                  </div>
+      {/* 4. COLLAPSIBLE ADVANCED TOOLS & SIMULATORS — Only for Students */}
+      {!isCoordinator && (
+        <section className="stealth-card p-6 space-y-4 bg-white border border-amber-100 rounded-3xl shadow-sm">
+          <button
+            onClick={() => setShowAdvancedTools(!showAdvancedTools)}
+            className="w-full flex items-center justify-between text-left focus:outline-none"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-[#FF6B4B]">
+                <Sliders className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-jakarta font-bold text-neutral-900">Advanced Tools & Simulators</h2>
+                <p className="text-xs text-neutral-500 font-mono">What-If Skip & Attend Streak Simulators</p>
+              </div>
+            </div>
 
-                  <div className="text-right">
-                    <span className={`text-3xl font-jakarta font-bold tnum ${
-                      sub.status === 'critical' ? 'text-rose-600' : sub.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'
-                    }`}>
-                      {sub.percentage}%
+            <div className="flex items-center space-x-2 btn-stealth px-4 py-2 text-xs font-mono shadow-xs">
+              <span>{showAdvancedTools ? 'Collapse Simulators' : 'Expand Simulators'}</span>
+              {showAdvancedTools ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </div>
+          </button>
+
+          {showAdvancedTools && (
+            <div className="pt-4 border-t border-amber-100 grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* What-If Simulator Card */}
+              <div className="lg:col-span-6 space-y-4 bg-amber-50/40 p-5 rounded-2xl border border-amber-200/60">
+                <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                  <h3 className="font-jakarta font-bold text-neutral-900 text-sm">"What-If" Skip Simulator</h3>
+                  <span className="text-[10px] font-mono text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full font-bold uppercase">Predictive Model</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-neutral-600 uppercase font-semibold">Select Subject</label>
+                  <select
+                    value={selectedSubjectId}
+                    onChange={(e) => setSelectedSubjectId(e.target.value)}
+                    className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
+                  >
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name} ({sub.code}) — Current: {sub.percentage}%
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="flex justify-between items-center text-xs font-mono">
+                    <span className="text-neutral-600 font-semibold">Simulate Skipping</span>
+                    <span className="text-[#FF6B4B] font-bold text-xs bg-white border border-orange-200 px-3 py-0.5 rounded-full tnum shadow-xs">
+                      {skipCount} {skipCount === 1 ? 'Class' : 'Classes'}
                     </span>
                   </div>
+                  
+                  <input
+                    type="range"
+                    min="0"
+                    max="6"
+                    step="1"
+                    value={skipCount}
+                    onChange={(e) => setSkipCount(parseInt(e.target.value))}
+                    className="w-full h-2 bg-amber-200/70 rounded-full appearance-none cursor-pointer accent-[#FF6B4B]"
+                  />
                 </div>
 
-                {/* Progress Bar */}
-                <div className="space-y-1">
-                  <div className="w-full h-2.5 bg-amber-100/60 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        sub.status === 'critical' 
-                          ? 'bg-rose-500' 
-                          : sub.status === 'warning' 
-                          ? 'bg-amber-500' 
-                          : 'bg-gradient-to-r from-[#FF6B4B] to-emerald-500'
-                      }`}
-                      style={{ width: `${sub.percentage}%` }}
-                    />
-                  </div>
+                {/* Chart */}
+                <div className="h-28 w-full pt-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorPctSim" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={isProjectedSafe ? "#FF6B4B" : "#EF4444"} stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor={isProjectedSafe ? "#FF6B4B" : "#EF4444"} stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="cuts" tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
+                      <YAxis domain={[60, 100]} tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#FED7AA', borderRadius: '8px', fontSize: '11px', color: '#1C1917' }}
+                        itemStyle={{ color: '#FF6B4B' }}
+                      />
+                      <ReferenceLine y={75} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '75% MIN', fill: '#D97706', fontSize: 9 }} />
+                      <Area 
+                        type="monotone" 
+                        dataKey="percentage" 
+                        stroke={isProjectedSafe ? "#FF6B4B" : "#EF4444"} 
+                        strokeWidth={2} 
+                        fillOpacity={1} 
+                        fill="url(#colorPctSim)" 
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
 
-                {/* Plain Forecast Line */}
-                <div className="flex items-center justify-between text-xs font-mono pt-1">
-                  <span className={`font-bold px-2.5 py-0.5 rounded-full text-[11px] border ${
-                    sub.status === 'critical' 
-                      ? 'bg-rose-100 text-rose-800 border-rose-200' 
-                      : sub.status === 'warning' 
-                      ? 'bg-amber-100 text-amber-800 border-amber-200' 
-                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                  }`}>
-                    {sub.actionableNote}
-                  </span>
+                <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
+                  isProjectedSafe 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                    : 'bg-rose-50 border-rose-200 text-rose-700'
+                }`}>
+                  <span className="font-semibold">Projected Attendance:</span>
+                  <span className="font-bold tnum text-sm">{selectedSubject.percentage}% → {projectedPercentage}%</span>
+                </div>
+              </div>
 
-                  <button
-                    onClick={() => setExpandedSubjectId(isCardExpanded ? null : sub.id)}
-                    className="text-neutral-500 hover:text-neutral-900 flex items-center space-x-1 text-[11px] font-semibold hover:underline"
+              {/* Attend Streak Simulator Card */}
+              <div className="lg:col-span-6 space-y-4 bg-amber-50/40 p-5 rounded-2xl border border-amber-200/60">
+                <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                  <h3 className="font-jakarta font-bold text-neutral-900 text-sm">Attend Streak Simulator</h3>
+                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold uppercase">Improvement Model</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-neutral-600 uppercase font-semibold">Select Subject</label>
+                  <select
+                    value={selectedSubjectId}
+                    onChange={(e) => setSelectedSubjectId(e.target.value)}
+                    className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
                   >
-                    <span>{isCardExpanded ? 'Hide Details' : 'Details'}</span>
-                    {isCardExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  </button>
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name} ({sub.code}) — Current: {sub.percentage}%
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                {/* Progressive Disclosure: Expanded Technical Card Details */}
-                {isCardExpanded && (
-                  <div className="pt-3 border-t border-amber-100 text-xs font-mono space-y-2 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
-                    <div className="flex justify-between text-neutral-800">
-                      <span>Classes Attended:</span>
-                      <span className="font-bold tnum">{sub.attended} / {sub.total} Total</span>
-                    </div>
-                    <div className="flex justify-between text-neutral-800">
-                      <span>Course Instructor:</span>
-                      <span>{sub.faculty} ({sub.credits} Credits)</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-700 font-bold">
-                      <span>Buffer Headroom:</span>
-                      <span className="tnum">{sub.bufferHeadroom} Skips</span>
-                    </div>
+                <div className="space-y-2 pt-1">
+                  <div className="flex justify-between items-center text-xs font-mono">
+                    <span className="text-neutral-600 font-semibold">Simulate Attending</span>
+                    <span className="text-emerald-700 font-bold text-xs bg-white border border-emerald-200 px-3 py-0.5 rounded-full tnum shadow-xs">
+                      {attendStreakCount} {attendStreakCount === 1 ? 'Class' : 'Classes'}
+                    </span>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 4. COLLAPSIBLE ADVANCED TOOLS & SIMULATORS */}
-      <section className="stealth-card p-6 space-y-4 bg-white border border-amber-100 rounded-3xl shadow-sm">
-        <button
-          onClick={() => setShowAdvancedTools(!showAdvancedTools)}
-          className="w-full flex items-center justify-between text-left focus:outline-none"
-        >
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-[#FF6B4B]">
-              <Sliders className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-jakarta font-bold text-neutral-900">Advanced Tools & Simulators</h2>
-              <p className="text-xs text-neutral-500 font-mono">What-If Skip & Attend Streak Simulators</p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 btn-stealth px-4 py-2 text-xs font-mono shadow-xs">
-            <span>{showAdvancedTools ? 'Collapse Simulators' : 'Expand Simulators'}</span>
-            {showAdvancedTools ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </div>
-        </button>
-
-        {showAdvancedTools && (
-          <div className="pt-4 border-t border-amber-100 grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            {/* What-If Simulator Card */}
-            <div className="lg:col-span-6 space-y-4 bg-amber-50/40 p-5 rounded-2xl border border-amber-200/60">
-              <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
-                <h3 className="font-jakarta font-bold text-neutral-900 text-sm">"What-If" Skip Simulator</h3>
-                <span className="text-[10px] font-mono text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full font-bold uppercase">Predictive Model</span>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-mono text-neutral-600 uppercase font-semibold">Select Subject</label>
-                <select
-                  value={selectedSubjectId}
-                  onChange={(e) => setSelectedSubjectId(e.target.value)}
-                  className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
-                >
-                  {subjects.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name} ({sub.code}) — Current: {sub.percentage}%
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2 pt-1">
-                <div className="flex justify-between items-center text-xs font-mono">
-                  <span className="text-neutral-600 font-semibold">Simulate Skipping</span>
-                  <span className="text-[#FF6B4B] font-bold text-xs bg-white border border-orange-200 px-3 py-0.5 rounded-full tnum shadow-xs">
-                    {skipCount} {skipCount === 1 ? 'Class' : 'Classes'}
-                  </span>
+                  
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="1"
+                    value={attendStreakCount}
+                    onChange={(e) => setAttendStreakCount(parseInt(e.target.value))}
+                    className="w-full h-2 bg-amber-200/70 rounded-full appearance-none cursor-pointer accent-[#10B981]"
+                  />
                 </div>
-                
-                <input
-                  type="range"
-                  min="0"
-                  max="6"
-                  step="1"
-                  value={skipCount}
-                  onChange={(e) => setSkipCount(parseInt(e.target.value))}
-                  className="w-full h-2 bg-amber-200/70 rounded-full appearance-none cursor-pointer accent-[#FF6B4B]"
-                />
-              </div>
 
-              {/* Chart */}
-              <div className="h-28 w-full pt-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorPctSim" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={isProjectedSafe ? "#FF6B4B" : "#EF4444"} stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor={isProjectedSafe ? "#FF6B4B" : "#EF4444"} stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="cuts" tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
-                    <YAxis domain={[60, 100]} tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#FED7AA', borderRadius: '8px', fontSize: '11px', color: '#1C1917' }}
-                      itemStyle={{ color: '#FF6B4B' }}
-                    />
-                    <ReferenceLine y={75} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '75% MIN', fill: '#D97706', fontSize: 9 }} />
-                    <Area 
-                      type="monotone" 
-                      dataKey="percentage" 
-                      stroke={isProjectedSafe ? "#FF6B4B" : "#EF4444"} 
-                      strokeWidth={2} 
-                      fillOpacity={1} 
-                      fill="url(#colorPctSim)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
-                isProjectedSafe 
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                  : 'bg-rose-50 border-rose-200 text-rose-700'
-              }`}>
-                <span className="font-semibold">Projected Attendance:</span>
-                <span className="font-bold tnum text-sm">{selectedSubject.percentage}% → {projectedPercentage}%</span>
-              </div>
-            </div>
-
-            {/* Attend Streak Simulator Card */}
-            <div className="lg:col-span-6 space-y-4 bg-amber-50/40 p-5 rounded-2xl border border-amber-200/60">
-              <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
-                <h3 className="font-jakarta font-bold text-neutral-900 text-sm">Attend Streak Simulator</h3>
-                <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold uppercase">Improvement Model</span>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-mono text-neutral-600 uppercase font-semibold">Select Subject</label>
-                <select
-                  value={selectedSubjectId}
-                  onChange={(e) => setSelectedSubjectId(e.target.value)}
-                  className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
-                >
-                  {subjects.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name} ({sub.code}) — Current: {sub.percentage}%
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2 pt-1">
-                <div className="flex justify-between items-center text-xs font-mono">
-                  <span className="text-neutral-600 font-semibold">Simulate Attending</span>
-                  <span className="text-emerald-700 font-bold text-xs bg-white border border-emerald-200 px-3 py-0.5 rounded-full tnum shadow-xs">
-                    {attendStreakCount} {attendStreakCount === 1 ? 'Class' : 'Classes'}
-                  </span>
+                {/* Chart */}
+                <div className="h-28 w-full pt-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={streakChartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorPctSimStreak" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="classes" tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
+                      <YAxis domain={[50, 100]} tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#A7F3D0', borderRadius: '8px', fontSize: '11px', color: '#1C1917' }}
+                        itemStyle={{ color: '#10B981' }}
+                      />
+                      <ReferenceLine y={75} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '75% MIN', fill: '#D97706', fontSize: 9 }} />
+                      <Area 
+                        type="monotone" 
+                        dataKey="percentage" 
+                        stroke="#10B981" 
+                        strokeWidth={2} 
+                        fillOpacity={1} 
+                        fill="url(#colorPctSimStreak)" 
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
-                
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  step="1"
-                  value={attendStreakCount}
-                  onChange={(e) => setAttendStreakCount(parseInt(e.target.value))}
-                  className="w-full h-2 bg-amber-200/70 rounded-full appearance-none cursor-pointer accent-[#10B981]"
-                />
+
+                <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
+                  isStreakProjectedSafe 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                    : 'bg-amber-50 border-amber-200 text-amber-800'
+                }`}>
+                  <span className="font-semibold">Projected Attendance:</span>
+                  <span className="font-bold tnum text-sm">{selectedSubject.percentage}% → {streakProjectedPercentage}%</span>
+                </div>
               </div>
 
-              {/* Chart */}
-              <div className="h-28 w-full pt-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={streakChartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorPctSimStreak" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="classes" tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
-                    <YAxis domain={[50, 100]} tick={{ fill: '#78716C', fontSize: 10, fontFamily: 'monospace' }} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#A7F3D0', borderRadius: '8px', fontSize: '11px', color: '#1C1917' }}
-                      itemStyle={{ color: '#10B981' }}
-                    />
-                    <ReferenceLine y={75} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '75% MIN', fill: '#D97706', fontSize: 9 }} />
-                    <Area 
-                      type="monotone" 
-                      dataKey="percentage" 
-                      stroke="#10B981" 
-                      strokeWidth={2} 
-                      fillOpacity={1} 
-                      fill="url(#colorPctSimStreak)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
-                isStreakProjectedSafe 
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                  : 'bg-amber-50 border-amber-200 text-amber-800'
-              }`}>
-                <span className="font-semibold">Projected Attendance:</span>
-                <span className="font-bold tnum text-sm">{selectedSubject.percentage}% → {streakProjectedPercentage}%</span>
-              </div>
             </div>
-
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       {/* 5. FULL WEEKLY TIMETABLE — Collapsible */}
       <TimetableSection />
@@ -598,6 +686,47 @@ const DAY_SUBTITLES: Record<Day, string> = {
 
 function TimetableSection() {
   const [open, setOpen] = useState(false);
+  const { batchData } = useApp();
+
+  const getDaySlots = (day: Day): any[] => {
+    if (!batchData || !batchData.timetable || !Array.isArray(batchData.timetable)) {
+      return TIMETABLE_MATRIX.filter((s) => s.day === day);
+    }
+
+    const tt = batchData.timetable;
+
+    // Case 1: Structured as Day objects [{ day: "Monday", slots: [...] }]
+    const dayObj = tt.find((item: any) => item && item.day && item.day.toLowerCase().startsWith(day.toLowerCase()));
+    if (dayObj && Array.isArray(dayObj.slots)) {
+      return dayObj.slots.map((s: any, idx: number) => ({
+        id: `parsed-${day}-${idx}`,
+        type: s.type || 'Lecture',
+        subjectName: s.subject || s.name || s.subjectName || 'Class',
+        faculty: s.faculty || 'Faculty Instructor',
+        room: s.room || s.location || 'LH-1',
+        time: s.time || '09:00 AM',
+        statusTag: s.code || s.subjectCode || '',
+        statusType: 'safe'
+      }));
+    }
+
+    // Case 2: Structured as Flat slots [{ day: "Monday", time: "...", subject: "..." }]
+    const flatSlots = tt.filter((item: any) => item && item.day && item.day.toLowerCase().startsWith(day.toLowerCase()));
+    if (flatSlots.length > 0) {
+      return flatSlots.map((s: any, idx: number) => ({
+        id: `parsed-${day}-${idx}`,
+        type: s.type || 'Lecture',
+        subjectName: s.subject || s.name || s.subjectName || 'Class',
+        faculty: s.faculty || 'Faculty Instructor',
+        room: s.room || s.location || 'LH-1',
+        time: s.time || '09:00 AM',
+        statusTag: s.code || s.subjectCode || '',
+        statusType: 'safe'
+      }));
+    }
+
+    return [];
+  };
 
   return (
     <section className="stealth-card p-6 space-y-4 bg-white border border-amber-100 rounded-3xl shadow-sm">
@@ -611,7 +740,7 @@ function TimetableSection() {
           </div>
           <div>
             <h2 className="text-lg font-jakarta font-bold text-neutral-900">Full Weekly Timetable</h2>
-            <p className="text-xs text-neutral-500 font-mono">Semester VI Schedule</p>
+            <p className="text-xs text-neutral-500 font-mono">Routine Matrix</p>
           </div>
         </div>
         <div className="flex items-center space-x-2 btn-stealth px-4 py-2 text-xs font-mono shadow-xs">
@@ -623,58 +752,65 @@ function TimetableSection() {
       {open && (
         <div className="pt-4 border-t border-amber-100 overflow-x-auto">
           <div className="grid grid-cols-6 gap-3 min-w-[900px]">
-            {DAYS.map((day) => (
-              <div key={day} className="space-y-3">
-                {/* Day header */}
-                <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3 text-center">
-                  <p className="font-jakarta font-bold text-neutral-900 text-sm">{day}</p>
-                  <p className="text-[10px] font-mono text-neutral-500">{DAY_SUBTITLES[day]}</p>
-                </div>
-
-                {/* Slots */}
-                {TIMETABLE_MATRIX.filter((s) => s.day === day).map((slot) => (
-                  <div
-                    key={slot.id}
-                    className={`p-3 rounded-xl border space-y-2 transition-all ${
-                      slot.type === 'Laboratory'
-                        ? 'border-purple-200 bg-purple-50/50 text-purple-900'
-                        : slot.type === 'Seminar'
-                        ? 'border-teal-200 bg-teal-50/50 text-teal-900'
-                        : slot.type === 'Free'
-                        ? 'border-neutral-200 bg-neutral-50/60 opacity-70'
-                        : 'border-amber-100 bg-white text-neutral-900 shadow-xs'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
-                        slot.type === 'Laboratory'
-                          ? 'bg-purple-100 text-purple-800'
-                          : slot.type === 'Seminar'
-                          ? 'bg-teal-100 text-teal-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {slot.type}
-                      </span>
-                      {slot.statusTag && (
-                        <span className={`text-[9px] font-mono font-bold ${
-                          slot.statusType === 'critical' ? 'text-rose-600' : 'text-emerald-700'
-                        }`}>
-                          {slot.statusTag}
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      <h4 className="font-jakarta font-bold text-neutral-900 text-xs truncate">{slot.subjectName}</h4>
-                      <p className="text-[10px] font-mono text-neutral-500 truncate">{slot.faculty || 'Unassigned'}</p>
-                    </div>
-                    <div className="pt-2 border-t border-amber-100/60 flex items-center justify-between text-[10px] font-mono text-neutral-500 tnum">
-                      <span>📍 {slot.room}</span>
-                      <span className="font-semibold text-neutral-700">{slot.time.split(' ')[0]}</span>
-                    </div>
+            {DAYS.map((day) => {
+              const daySlots = getDaySlots(day);
+              return (
+                <div key={day} className="space-y-3">
+                  {/* Day header */}
+                  <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3 text-center">
+                    <p className="font-jakarta font-bold text-neutral-900 text-sm">{day}</p>
+                    <p className="text-[10px] font-mono text-neutral-500">{DAY_SUBTITLES[day]}</p>
                   </div>
-                ))}
-              </div>
-            ))}
+
+                  {/* Slots */}
+                  {daySlots.length === 0 ? (
+                    <div className="p-3 text-center bg-amber-50/40 border border-amber-200/50 rounded-xl">
+                      <p className="text-[10px] font-mono text-neutral-400">No classes</p>
+                    </div>
+                  ) : (
+                    daySlots.map((slot: any) => (
+                      <div
+                        key={slot.id}
+                        className={`p-3 rounded-xl border space-y-2 transition-all ${
+                          slot.type === 'Laboratory'
+                            ? 'border-purple-200 bg-purple-50/50 text-purple-900'
+                            : slot.type === 'Seminar'
+                            ? 'border-teal-200 bg-teal-50/50 text-teal-900'
+                            : slot.type === 'Free'
+                            ? 'border-neutral-200 bg-neutral-50/60 opacity-70'
+                            : 'border-amber-100 bg-white text-neutral-900 shadow-xs'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
+                            slot.type === 'Laboratory'
+                              ? 'bg-purple-100 text-purple-800'
+                              : slot.type === 'Seminar'
+                              ? 'bg-teal-100 text-teal-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {slot.type}
+                          </span>
+                          {slot.statusTag && (
+                            <span className="text-[9px] font-mono font-bold text-emerald-700">
+                              {slot.statusTag}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="font-jakarta font-bold text-neutral-900 text-xs truncate">{slot.subjectName}</h4>
+                          <p className="text-[10px] font-mono text-neutral-500 truncate">{slot.faculty || 'Unassigned'}</p>
+                        </div>
+                        <div className="pt-2 border-t border-amber-100/60 flex items-center justify-between text-[10px] font-mono text-neutral-500 tnum">
+                          <span>📍 {slot.room}</span>
+                          <span className="font-semibold text-neutral-700">{slot.time.split(' ')[0]}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

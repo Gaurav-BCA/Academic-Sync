@@ -6,9 +6,11 @@ import {
   RECONCILIATION_LEDS,
   TIMETABLE_MATRIX
 } from '../data/mockData';
-import { db } from '../services/firebase';
+import { db, auth } from '../services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { 
   doc, 
+  getDoc,
   setDoc, 
   onSnapshot, 
   collection, 
@@ -20,9 +22,11 @@ import {
 export type UserRole = 'student' | 'coordinator';
 
 export interface UserProfile {
+  uid?: string;
   fullName: string;
   rollNumber: string;
   classCode: string;
+  email?: string;
   institution?: string;
   branch?: string;
   semester?: string;
@@ -75,7 +79,7 @@ const LS_KEY_PROFILE = 'academicsync_userProfile';
 const LS_KEY_RECON_SUBMISSIONS = 'academicsync_reconSubmissions';
 
 const DEFAULT_PROFILE: UserProfile = {
-  fullName: 'Gaurav Bisht',
+  fullName: 'User Account',
   rollNumber: '21CS045',
   classCode: 'CS-8849',
   institution: 'Apex Inst. of Tech',
@@ -89,7 +93,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       return localStorage.getItem(LS_KEY_ONBOARDED) === 'true';
     } catch {
-      return true; // Default to onboarded as Gaurav Bisht for seamless preview
+      return false;
     }
   });
 
@@ -111,6 +115,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return DEFAULT_PROFILE;
     }
   });
+
+  // Sync state dynamically with Firebase Auth & Firestore user records
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setIsOnboarded(true);
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const data = userDocSnap.data();
+            const role: UserRole = data.role === 'coordinator' ? 'coordinator' : 'student';
+            const profile: UserProfile = {
+              uid: user.uid,
+              fullName: data.name || data.fullName || user.displayName || 'User',
+              rollNumber: data.rollNumber || (role === 'coordinator' ? 'COORDINATOR' : '21CS045'),
+              classCode: data.classCode || 'CS-8849',
+              email: user.email || data.email || '',
+              institution: data.institution || 'Apex Inst. of Tech',
+              branch: data.branch || 'Computer Science & Eng',
+              semester: data.term || data.semester || 'Sem VI'
+            };
+
+            setUserRoleState(role);
+            setUserProfileState(profile);
+
+            try {
+              localStorage.setItem(LS_KEY_ONBOARDED, 'true');
+              localStorage.setItem(LS_KEY_ROLE, role);
+              localStorage.setItem(LS_KEY_PROFILE, JSON.stringify(profile));
+            } catch {
+              // noop
+            }
+          }
+        } catch (err) {
+          console.warn('[AppContext] Error fetching Firestore user record:', err);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Subjects state
   const [subjects, setSubjects] = useState<SubjectTelemetry[]>(INITIAL_SUBJECTS);
@@ -143,30 +189,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const classCode = userProfile.classCode || 'CS-8849';
     const batchDocRef = doc(db, "batches", classCode);
+
+    const extractTodaySlots = (timetableData: any[]): any[] => {
+      if (!timetableData || !Array.isArray(timetableData) || timetableData.length === 0) {
+        return [];
+      }
+
+      const daysFull = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const daysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const currentDayIdx = new Date().getDay();
+      const currentFull = daysFull[currentDayIdx].toLowerCase();
+      const currentShort = daysShort[currentDayIdx].toLowerCase();
+
+      // Case 1: Structured as Day objects [{ day: "Monday", slots: [...] }]
+      const dayObj = timetableData.find((item: any) =>
+        item && item.day && (item.day.toLowerCase() === currentFull || item.day.toLowerCase() === currentShort)
+      );
+
+      if (dayObj && Array.isArray(dayObj.slots)) {
+        return dayObj.slots;
+      }
+
+      // Case 2: Structured as Flat slots [{ day: "Monday", time: "...", subject: "..." }]
+      const flatSlots = timetableData.filter((item: any) =>
+        item && item.day && (item.day.toLowerCase() === currentFull || item.day.toLowerCase() === currentShort)
+      );
+
+      if (flatSlots.length > 0) {
+        return flatSlots;
+      }
+
+      return [];
+    };
+
     const unsubscribe = onSnapshot(batchDocRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setBatchData(data);
         if (data.timetable && Array.isArray(data.timetable)) {
-          const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-          const currentDay = days[new Date().getDay()];
-          const daySlots = data.timetable.filter((slot: any) => slot.day === currentDay);
-          setTodayTimetable(daySlots.length > 0 ? daySlots : data.timetable.filter((slot: any) => slot.day === 'Mon'));
+          const slots = extractTodaySlots(data.timetable);
+          setTodayTimetable(slots);
+        } else {
+          setTodayTimetable([]);
         }
       } else {
-        // Fallback default timetable if batch doc not yet seeded
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const currentDay = days[new Date().getDay()];
-        const daySlots = TIMETABLE_MATRIX.filter((slot: any) => slot.day === currentDay);
-        setTodayTimetable(daySlots.length > 0 ? daySlots : TIMETABLE_MATRIX.filter((slot: any) => slot.day === 'Mon'));
+        setBatchData(null);
+        setTodayTimetable([]);
       }
     }, (err) => {
       console.warn("Firestore batch listener notice:", err);
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const currentDay = days[new Date().getDay()];
-      const daySlots = TIMETABLE_MATRIX.filter((slot: any) => slot.day === currentDay);
-      setTodayTimetable(daySlots.length > 0 ? daySlots : TIMETABLE_MATRIX.filter((slot: any) => slot.day === 'Mon'));
+      setTodayTimetable([]);
     });
+
     return () => unsubscribe();
   }, [userProfile.classCode]);
 

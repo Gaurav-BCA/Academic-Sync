@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Users, 
   Search, 
@@ -125,22 +125,33 @@ export const ManageStudentsScreen: React.FC = () => {
   }, [auditLogs]);
 
   // Selected student details
-  const selectedStudent = students.find(s => s.id === selectedStudentId);
+  const selectedStudent = useMemo(() => students.find(s => s.id === selectedStudentId), [students, selectedStudentId]);
 
   // Filtered students list
-  const filteredStudents = students.filter(s => 
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.rollNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.email && s.email.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return students;
+    return students.filter(s => 
+      s.name.toLowerCase().includes(q) ||
+      s.rollNumber.toLowerCase().includes(q) ||
+      (s.email && s.email.toLowerCase().includes(q))
+    );
+  }, [students, searchQuery]);
 
   // Helper: compute overall student attendance percentage
-  const calculateOverallPct = (student: StudentDetail): number => {
+  const calculateOverallPct = useCallback((student: StudentDetail): number => {
     const totalAttended = student.subjects.reduce((acc, sub) => acc + sub.attended, 0);
     const totalClasses = student.subjects.reduce((acc, sub) => acc + sub.total, 0);
     if (totalClasses === 0) return 0;
     return Math.round((totalAttended / totalClasses) * 1000) / 10;
-  };
+  }, []);
+
+  // Compute batch average percentage
+  const batchAvgPct = useMemo(() => {
+    if (students.length === 0) return 0;
+    const sum = students.reduce((acc, s) => acc + calculateOverallPct(s), 0);
+    return Math.round((sum / students.length) * 10) / 10;
+  }, [students, calculateOverallPct]);
 
   // Open edit modal for a lecture
   const handleOpenEditModal = (studentId: string, lecture: LectureRecord) => {
@@ -379,7 +390,7 @@ export const ManageStudentsScreen: React.FC = () => {
               <div>
                 <span className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider">BATCH AVG ATTENDANCE</span>
                 <div className="text-3xl font-jakarta font-bold text-neutral-900 mt-1 tnum">
-                  {students.length > 0 ? (Math.round(students.reduce((acc, s) => acc + calculateOverallPct(s), 0) / students.length * 10) / 10) : 0}%
+                  {batchAvgPct}%
                 </div>
                 <span className="text-[11px] text-emerald-700 font-medium mt-0.5 block">Compliant (&gt;75%)</span>
               </div>

@@ -22,9 +22,8 @@ import {
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
-import { parseTimetableWithGemini, DaySchedule } from '../services/geminiService';
+import { parseTimetableWithGemini, ParsedDaySchedule, ParsedSubject } from '../services/geminiService';
 import { Toast, ToastMessage } from '../components/Toast';
-import { TIMETABLE_MATRIX } from '../data/mockData';
 
 export const OverviewGateScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -60,11 +59,12 @@ export const OverviewGateScreen: React.FC = () => {
   const [branch, setBranch] = useState('Computer Science & Eng');
   const [semester, setSemester] = useState('Sem VI');
   
-  // Timetable upload & AI OCR parsing state
+  // Real Gemini AI Timetable OCR parsing state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isCoordSubmitting, setIsCoordSubmitting] = useState(false);
-  const [parsedTimetable, setParsedTimetable] = useState<DaySchedule[] | null>(null);
+  const [parsedTimetable, setParsedTimetable] = useState<ParsedDaySchedule[] | null>(null);
+  const [parsedSubjects, setParsedSubjects] = useState<ParsedSubject[] | null>(null);
   const [_generatedClassCode, setGeneratedClassCode] = useState<string>('CS-8849');
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
@@ -76,6 +76,14 @@ export const OverviewGateScreen: React.FC = () => {
     setTokenInput('CS-8849');
     setCopiedToken(true);
     setTimeout(() => setCopiedToken(false), 2000);
+  };
+
+  // Helper to format email username into capitalized full name
+  const deriveNameFromEmail = (email: string, fallbackRoleName: string): string => {
+    if (!email || !email.includes('@')) return fallbackRoleName;
+    const parts = email.split('@')[0].replace(/[._-]/g, ' ').trim().split(/\s+/);
+    if (parts.length === 0 || !parts[0]) return fallbackRoleName;
+    return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
   };
 
   // ──────────────────────────────────────────
@@ -103,18 +111,33 @@ export const OverviewGateScreen: React.FC = () => {
 
         // Retrieve student profile from Firestore users/{uid}
         const userSnap = await getDoc(doc(db, 'users', uid));
-        let sName = 'Student';
-        let sRoll = '';
+        let sName = '';
+        let sRoll = '21CS045';
         let sCode = 'CS-8849';
 
         if (userSnap.exists()) {
           const data = userSnap.data();
-          sName = data.name || data.fullName || 'Student';
-          sRoll = data.rollNumber || '';
+          sName = data.name || data.fullName || '';
+          sRoll = data.rollNumber || '21CS045';
           sCode = data.classCode || 'CS-8849';
         }
 
-        showToast('success', 'Welcome back! Signed in successfully.');
+        // Recover missing profile gracefully from Auth metadata if DB record is absent
+        if (!sName) {
+          sName = userCred.user.displayName?.trim() || deriveNameFromEmail(studentEmail.trim(), 'Student');
+          // Auto-repair missing user record in Firestore
+          await setDoc(doc(db, 'users', uid), {
+            uid,
+            name: sName,
+            rollNumber: sRoll,
+            email: studentEmail.trim(),
+            classCode: sCode,
+            role: 'student',
+            createdAt: serverTimestamp()
+          }, { merge: true });
+        }
+
+        showToast('success', `Welcome back, ${sName}! Signed in successfully.`);
         completeOnboarding('student', {
           uid,
           email: studentEmail.trim(),
@@ -181,7 +204,7 @@ export const OverviewGateScreen: React.FC = () => {
           createdAt: serverTimestamp()
         }, { merge: true });
 
-        showToast('success', 'Account created! Joined class batch successfully.');
+        showToast('success', `Account created! Joined batch ${formattedCode} successfully.`);
         completeOnboarding('student', {
           uid,
           email: studentEmail.trim(),
@@ -206,7 +229,7 @@ export const OverviewGateScreen: React.FC = () => {
   };
 
   // ──────────────────────────────────────────
-  // 2. COORDINATOR TIMETABLE FILE UPLOAD & GEMINI OCR PARSING
+  // 2. REAL GEMINI 2.5 FLASH API TIMETABLE OCR PARSING
   // ──────────────────────────────────────────
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -222,55 +245,25 @@ export const OverviewGateScreen: React.FC = () => {
 
     setIsParsing(true);
     try {
-      const parsedData = await parseTimetableWithGemini(selectedFile);
-      setParsedTimetable(parsedData);
+      const result = await parseTimetableWithGemini(selectedFile);
+      setParsedSubjects(result.subjects);
+      setParsedTimetable(result.timetable);
       setIsReviewModalOpen(true);
-      showToast('success', 'AI Timetable OCR completed! Please review and verify the schedule.', 'Timetable Parsed');
+      if (result.isFallback) {
+        showToast('info', 'Gemini API unavailable (403/Quota). Loaded standard timetable OCR fallback parser.', 'OCR Fallback Parser');
+      } else {
+        showToast('success', 'AI Timetable OCR completed! Please review and verify the schedule.', 'Timetable Parsed');
+      }
     } catch (err: any) {
-      console.warn('Gemini parsing error, falling back to preview matrix:', err);
-      showToast('info', 'AI OCR notice: Processed timetable image. Preview grid generated for review.', 'AI Parsing Completed');
-      
-      const fallbackParsed: DaySchedule[] = [
-        {
-          day: 'Monday',
-          slots: TIMETABLE_MATRIX.filter(s => s.day === 'Mon').map(s => ({
-            time: s.time.split(' ')[0],
-            subject: s.subjectName,
-            subjectCode: s.subjectCode,
-            faculty: s.faculty,
-            room: s.room
-          }))
-        },
-        {
-          day: 'Tuesday',
-          slots: TIMETABLE_MATRIX.filter(s => s.day === 'Tue').map(s => ({
-            time: s.time.split(' ')[0],
-            subject: s.subjectName,
-            subjectCode: s.subjectCode,
-            faculty: s.faculty,
-            room: s.room
-          }))
-        },
-        {
-          day: 'Wednesday',
-          slots: TIMETABLE_MATRIX.filter(s => s.day === 'Wed').map(s => ({
-            time: s.time.split(' ')[0],
-            subject: s.subjectName,
-            subjectCode: s.subjectCode,
-            faculty: s.faculty,
-            room: s.room
-          }))
-        }
-      ];
-      setParsedTimetable(fallbackParsed);
-      setIsReviewModalOpen(true);
+      console.error('Gemini API OCR error:', err);
+      showToast('error', err.message || 'AI Parsing Failed — Please upload a clear timetable PDF or Image document and retry.', 'AI Parsing Failed');
     } finally {
       setIsParsing(false);
     }
   };
 
   // ──────────────────────────────────────────
-  // 3. COORDINATOR SUBMISSION (SIGN UP & SIGN IN)
+  // 3. COORDINATOR SUBMISSION & FIRESTORE BATCH PERSISTENCE
   // ──────────────────────────────────────────
   const handleCoordSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -294,7 +287,7 @@ export const OverviewGateScreen: React.FC = () => {
 
         // Fetch coordinator user profile from Firestore users/{uid}
         const userSnap = await getDoc(doc(db, 'users', uid));
-        let cName = 'Class Coordinator';
+        let cName = '';
         let cInst = 'Apex Inst. of Tech';
         let cBranch = 'Computer Science & Eng';
         let cTerm = 'Sem VI';
@@ -302,7 +295,7 @@ export const OverviewGateScreen: React.FC = () => {
 
         if (userSnap.exists()) {
           const data = userSnap.data();
-          cName = data.name || data.fullName || 'Class Coordinator';
+          cName = data.name || data.fullName || '';
           cInst = data.institution || 'Apex Inst. of Tech';
           cBranch = data.branch || 'Computer Science & Eng';
           cTerm = data.term || data.semester || 'Sem VI';
@@ -319,7 +312,23 @@ export const OverviewGateScreen: React.FC = () => {
           cCode = firstBatch.classCode || cCode;
         }
 
-        showToast('success', 'Welcome back! Coordinator signed in successfully.');
+        // Recover missing profile gracefully if DB record is missing
+        if (!cName) {
+          cName = userCred.user.displayName?.trim() || deriveNameFromEmail(coordEmail.trim(), 'Class Coordinator');
+          await setDoc(doc(db, 'users', uid), {
+            uid,
+            name: cName,
+            email: coordEmail.trim(),
+            institution: cInst,
+            branch: cBranch,
+            term: cTerm,
+            classCode: cCode,
+            role: 'coordinator',
+            createdAt: serverTimestamp()
+          }, { merge: true });
+        }
+
+        showToast('success', `Welcome back, ${cName}! Coordinator signed in successfully.`);
         completeOnboarding('coordinator', {
           uid,
           email: coordEmail.trim(),
@@ -372,7 +381,7 @@ export const OverviewGateScreen: React.FC = () => {
           createdAt: serverTimestamp()
         }, { merge: true });
 
-        // Write batch doc batches/{classCode}
+        // Write batch doc batches/{classCode} with EXACT Gemini parsed JSON
         await setDoc(doc(db, 'batches', newCode), {
           classCode: newCode,
           coordinatorUid: uid,
@@ -380,7 +389,8 @@ export const OverviewGateScreen: React.FC = () => {
           institution: institution.trim() || 'Apex Inst. of Tech',
           branch: branch.trim() || 'Computer Science & Eng',
           term: semester.trim() || 'Sem VI',
-          timetable: parsedTimetable || TIMETABLE_MATRIX,
+          subjects: parsedSubjects || [],
+          timetable: parsedTimetable || [],
           createdAt: serverTimestamp()
         }, { merge: true });
 
@@ -475,12 +485,12 @@ export const OverviewGateScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Single Centered Gate Card Container */}
-      <div className="max-w-xl mx-auto">
+      {/* Main Centered Gate Card Container */}
+      <div className="max-w-2xl mx-auto">
         {activeTab === 'student' ? (
           /* Student Gate Card */
-          <div className="stealth-card p-8 flex flex-col justify-between space-y-6 animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
-            <form onSubmit={handleStudentSubmit} className="space-y-4.5">
+          <div className="stealth-card p-8 sm:p-10 md:p-12 flex flex-col justify-between animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
+            <form onSubmit={handleStudentSubmit} className="space-y-6">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center space-x-2 text-emerald-600">
                   <UserCheck className="w-5 h-5" />
@@ -494,185 +504,190 @@ export const OverviewGateScreen: React.FC = () => {
               </div>
 
               <div>
-                <h2 className="text-2xl font-jakarta font-bold text-neutral-900">
+                <h2 className="text-2xl sm:text-3xl font-jakarta font-bold text-neutral-900">
                   {isStudentSignIn ? 'Student Sign In' : 'Class Member Gate'}
                 </h2>
-                <p className="text-xs text-neutral-600 leading-relaxed mt-1">
+                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed mt-1.5">
                   {isStudentSignIn
-                    ? 'Welcome back! Enter your email address and password to sign in to your student attendance dashboard.'
+                    ? 'Welcome back! Enter your email address and password to access your student attendance dashboard.'
                     : 'Enter your credentials, personal details, and 6-digit class code to join your cohort and start tracking attendance.'}
                 </p>
               </div>
 
-              {/* Email Address (Always required) */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                  Email Address <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="email"
-                    required
-                    value={studentEmail}
-                    onChange={(e) => setStudentEmail(e.target.value)}
-                    placeholder="student@institution.edu"
-                    className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
-                  />
-                </div>
-              </div>
-
-              {/* Password with Show/Hide Toggle (Always required) */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                  Password <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                    <Lock className="w-4 h-4" />
-                  </div>
-                  <input
-                    type={showStudentPassword ? 'text' : 'password'}
-                    required
-                    value={studentPassword}
-                    onChange={(e) => setStudentPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="input-stealth w-full pl-11 pr-11 py-3 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowStudentPassword(prev => !prev)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors z-10 p-1 rounded-md focus:outline-none"
-                    title={showStudentPassword ? "Hide password" : "Show password"}
-                  >
-                    {showStudentPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* ── SIGN-UP MODE SPECIFIC FIELDS ── */}
-              {!isStudentSignIn && (
-                <>
-                  {/* Full Name */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                      Full Name <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                        <User className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        required
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="e.g. Rahul Sharma"
-                        className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
-                      />
+              {/* 2-Column Grid for Input Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                {/* Email Address */}
+                <div className="space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                    Email Address <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                      <Mail className="w-4 h-4" />
                     </div>
+                    <input
+                      type="email"
+                      required
+                      value={studentEmail}
+                      onChange={(e) => setStudentEmail(e.target.value)}
+                      placeholder="student@institution.edu"
+                      className="input-stealth w-full pl-11 pr-4 py-3.5 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                    />
                   </div>
+                </div>
 
-                  {/* Roll Number / Student ID */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                      Roll Number / Student ID <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                        <Hash className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        required
-                        value={rollNumber}
-                        onChange={(e) => setRollNumber(e.target.value)}
-                        placeholder="e.g. 21CS045"
-                        className="input-stealth w-full pl-11 pr-4 py-3 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
-                      />
+                {/* Password with Eye Toggle */}
+                <div className="space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                    Password <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                      <Lock className="w-4 h-4" />
                     </div>
+                    <input
+                      type={showStudentPassword ? 'text' : 'password'}
+                      required
+                      value={studentPassword}
+                      onChange={(e) => setStudentPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="input-stealth w-full pl-11 pr-11 py-3.5 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStudentPassword(prev => !prev)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors z-10 p-1 rounded-md focus:outline-none"
+                      title={showStudentPassword ? "Hide password" : "Show password"}
+                    >
+                      {showStudentPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
+                </div>
 
-                  {/* 6-Digit Class Code */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex items-center justify-between text-xs text-neutral-600">
-                      <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                        6-Digit Class Code <span className="text-rose-500">*</span>
+                {/* SIGN-UP MODE ADDITIONAL FIELDS */}
+                {!isStudentSignIn && (
+                  <>
+                    {/* Full Name */}
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                        Full Name <span className="text-rose-500">*</span>
                       </label>
-                      <button
-                        type="button"
-                        onClick={handleCopyToken}
-                        className="flex items-center space-x-1 text-[#FF6B4B] hover:text-orange-600 font-mono text-[11px] font-bold"
-                      >
-                        <Copy className="w-3 h-3" />
-                        <span>{copiedToken ? 'Applied!' : 'Try: CS-8849'}</span>
-                      </button>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          placeholder="e.g. Rahul Sharma"
+                          className="input-stealth w-full pl-11 pr-4 py-3.5 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                        />
+                      </div>
                     </div>
 
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                        <BookOpen className="w-4 h-4" />
+                    {/* Roll Number / Student ID */}
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                        Roll Number / ID <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                          <Hash className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={rollNumber}
+                          onChange={(e) => setRollNumber(e.target.value)}
+                          placeholder="e.g. 21CS045"
+                          className="input-stealth w-full pl-11 pr-4 py-3.5 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                        />
                       </div>
-                      <input
-                        type="text"
-                        required
-                        value={tokenInput}
-                        onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
-                        placeholder="e.g. CS-8849"
-                        className="input-stealth w-full pl-11 pr-16 py-3 font-mono text-sm tracking-wider uppercase font-bold placeholder:text-neutral-400 text-neutral-900"
-                      />
-                      {tokenInput && (
+                    </div>
+
+                    {/* 6-Digit Class Code */}
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <div className="flex items-center justify-between text-xs text-neutral-600 mb-1.5">
+                        <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider">
+                          6-Digit Class Code <span className="text-rose-500">*</span>
+                        </label>
                         <button
                           type="button"
-                          onClick={() => setTokenInput('')}
-                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400 hover:text-neutral-700 font-mono z-10"
+                          onClick={handleCopyToken}
+                          className="flex items-center space-x-1 text-[#FF6B4B] hover:text-orange-600 font-mono text-xs font-bold"
                         >
-                          Clear
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>{copiedToken ? 'Applied!' : 'Try: CS-8849'}</span>
                         </button>
-                      )}
+                      </div>
+
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                          <BookOpen className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={tokenInput}
+                          onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
+                          placeholder="e.g. CS-8849"
+                          className="input-stealth w-full pl-11 pr-16 py-3.5 font-mono text-sm tracking-wider uppercase font-bold placeholder:text-neutral-400 text-neutral-900"
+                        />
+                        {tokenInput && (
+                          <button
+                            type="button"
+                            onClick={() => setTokenInput('')}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400 hover:text-neutral-700 font-mono z-10"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
 
               {/* Primary Action Button */}
-              <button
-                type="submit"
-                disabled={isStudentLoading}
-                className="btn-primary w-full py-3.5 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold mt-4 shadow-md disabled:opacity-70"
-              >
-                {isStudentLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : isStudentSignIn ? (
-                  <LogIn className="w-4 h-4" />
-                ) : (
-                  <UserPlus className="w-4 h-4" />
-                )}
-                <span>
-                  {isStudentLoading
-                    ? isStudentSignIn ? 'SIGNING IN...' : 'AUTHENTICATING & JOINING...'
-                    : isStudentSignIn ? 'SIGN IN TO DASHBOARD' : 'JOIN CLASS BATCH'}
-                </span>
-              </button>
+              <div className="mt-6 space-y-3.5">
+                <button
+                  type="submit"
+                  disabled={isStudentLoading}
+                  className="btn-primary w-full py-4 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold shadow-md disabled:opacity-70"
+                >
+                  {isStudentLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isStudentSignIn ? (
+                    <LogIn className="w-4 h-4" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
+                  <span>
+                    {isStudentLoading
+                      ? isStudentSignIn ? 'SIGNING IN...' : 'AUTHENTICATING & JOINING...'
+                      : isStudentSignIn ? 'SIGN IN TO DASHBOARD' : 'JOIN CLASS BATCH'}
+                  </span>
+                </button>
+              </div>
             </form>
 
             {/* Dynamic Sign-In / Sign-Up Mode Toggle Link */}
-            <div className="pt-4 border-t border-amber-100 text-xs text-neutral-600 font-sans text-center">
+            <div className="pt-5 mt-6 border-t border-amber-100/80 text-xs text-neutral-600 font-sans text-center">
               {isStudentSignIn ? (
                 <span>
                   Need to register a new account?{' '}
                   <button
                     type="button"
                     onClick={() => setIsStudentSignIn(false)}
-                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1"
                   >
-                    <span>Sign Up</span>
+                    Sign Up
                   </button>
                 </span>
               ) : (
@@ -681,9 +696,9 @@ export const OverviewGateScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsStudentSignIn(true)}
-                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1"
                   >
-                    <span>Sign In</span>
+                    Sign In
                   </button>
                 </span>
               )}
@@ -691,8 +706,8 @@ export const OverviewGateScreen: React.FC = () => {
           </div>
         ) : (
           /* Class Coordinator Setup Card */
-          <div className="stealth-card p-8 flex flex-col justify-between space-y-6 animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
-            <form onSubmit={handleCoordSubmit} className="space-y-4.5">
+          <div className="stealth-card p-8 sm:p-10 md:p-12 flex flex-col justify-between animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
+            <form onSubmit={handleCoordSubmit} className="space-y-6">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center space-x-2 text-indigo-600">
                   <BookOpen className="w-5 h-5" />
@@ -706,129 +721,145 @@ export const OverviewGateScreen: React.FC = () => {
               </div>
 
               <div>
-                <h2 className="text-2xl font-jakarta font-bold text-neutral-900">
+                <h2 className="text-2xl sm:text-3xl font-jakarta font-bold text-neutral-900">
                   {isCoordSignIn ? 'Coordinator Sign In' : 'Class Coordinator Hub'}
                 </h2>
-                <p className="text-xs text-neutral-600 leading-relaxed mt-1">
+                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed mt-1.5">
                   {isCoordSignIn
                     ? 'Welcome back! Enter your email address and password to manage your cohort and view student roster.'
                     : 'Establish your cohort routine. Enter account details, institution info, and parse your timetable with Gemini AI.'}
                 </p>
               </div>
 
-              {/* Coordinator Email Address (Always required) */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                  Coordinator Email Address <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="email"
-                    required
-                    value={coordEmail}
-                    onChange={(e) => setCoordEmail(e.target.value)}
-                    placeholder="coordinator@institution.edu"
-                    className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
-                  />
-                </div>
-              </div>
-
-              {/* Coordinator Password with Show/Hide Toggle (Always required) */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                  Password <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                    <Lock className="w-4 h-4" />
-                  </div>
-                  <input
-                    type={showCoordPassword ? 'text' : 'password'}
-                    required
-                    value={coordPassword}
-                    onChange={(e) => setCoordPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="input-stealth w-full pl-11 pr-11 py-3 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCoordPassword(prev => !prev)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors z-10 p-1 rounded-md focus:outline-none"
-                    title={showCoordPassword ? "Hide password" : "Show password"}
-                  >
-                    {showCoordPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* ── SIGN-UP MODE SPECIFIC FIELDS FOR COORDINATOR ── */}
-              {!isCoordSignIn && (
-                <>
-                  {/* Coordinator Full Name Field */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                      Coordinator / Teacher Full Name <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
-                        <User className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        required
-                        value={coordinatorName}
-                        onChange={(e) => setCoordinatorName(e.target.value)}
-                        placeholder="e.g. Prof. S. Chakrabarti"
-                        className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
-                      />
+              {/* 2-Column Grid Container */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                {/* Coordinator Email Address */}
+                <div className="space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                    Coordinator Email <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                      <Mail className="w-4 h-4" />
                     </div>
+                    <input
+                      type="email"
+                      required
+                      value={coordEmail}
+                      onChange={(e) => setCoordEmail(e.target.value)}
+                      placeholder="coordinator@institution.edu"
+                      className="input-stealth w-full pl-11 pr-4 py-3.5 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                    />
                   </div>
+                </div>
 
-                  {/* Free-text input fields for Institution, Branch, Semester */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                    <div>
-                      <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">INSTITUTION</label>
+                {/* Coordinator Password with Eye Toggle */}
+                <div className="space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                    Password <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showCoordPassword ? 'text' : 'password'}
+                      required
+                      value={coordPassword}
+                      onChange={(e) => setCoordPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="input-stealth w-full pl-11 pr-11 py-3.5 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCoordPassword(prev => !prev)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors z-10 p-1 rounded-md focus:outline-none"
+                      title={showCoordPassword ? "Hide password" : "Show password"}
+                    >
+                      {showCoordPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* SIGN-UP MODE ADDITIONAL FIELDS FOR COORDINATOR */}
+                {!isCoordSignIn && (
+                  <>
+                    {/* Coordinator Full Name Field */}
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                        Full Name <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={coordinatorName}
+                          onChange={(e) => setCoordinatorName(e.target.value)}
+                          placeholder="e.g. Prof. S. Chakrabarti"
+                          className="input-stealth w-full pl-11 pr-4 py-3.5 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Institution */}
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                        Institution
+                      </label>
                       <input
                         type="text"
                         value={institution}
                         onChange={(e) => setInstitution(e.target.value)}
                         placeholder="e.g. Apex Inst. of Tech"
-                        className="input-stealth w-full px-3 py-2.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
+                        className="input-stealth w-full px-4 py-3.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
                       />
                     </div>
-                    <div>
-                      <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">BRANCH / DEPT</label>
+
+                    {/* Branch / Dept */}
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                        Branch / Dept
+                      </label>
                       <input
                         type="text"
                         value={branch}
                         onChange={(e) => setBranch(e.target.value)}
                         placeholder="e.g. Comp. Sci. & Eng"
-                        className="input-stealth w-full px-3 py-2.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
+                        className="input-stealth w-full px-4 py-3.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
                       />
                     </div>
-                    <div>
-                      <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">TERM / SEMESTER</label>
+
+                    {/* Term / Semester */}
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                        Term / Semester
+                      </label>
                       <input
                         type="text"
                         value={semester}
                         onChange={(e) => setSemester(e.target.value)}
                         placeholder="e.g. Sem VI"
-                        className="input-stealth w-full px-3 py-2.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
+                        className="input-stealth w-full px-4 py-3.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
                       />
                     </div>
-                  </div>
+                  </>
+                )}
+              </div>
 
+              {/* Timetable Upload & Action Buttons Section */}
+              {!isCoordSignIn && (
+                <>
                   {/* Drag and Drop Zone */}
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="border border-dashed border-amber-300/80 hover:border-[#FF6B4B] bg-amber-50/40 rounded-2xl p-4.5 text-center cursor-pointer transition-colors space-y-1.5 group my-2"
+                    className="border border-dashed border-amber-300/80 hover:border-[#FF6B4B] bg-amber-50/40 rounded-2xl py-6 px-4 text-center cursor-pointer transition-colors space-y-2 group my-3"
                   >
                     {selectedFile ? (
                       <div className="flex items-center justify-center space-x-2 text-emerald-700 font-semibold text-xs py-1">
@@ -837,8 +868,8 @@ export const OverviewGateScreen: React.FC = () => {
                       </div>
                     ) : (
                       <>
-                        <Upload className="w-5 h-5 mx-auto text-[#FF6B4B] transition-transform group-hover:scale-110" />
-                        <p className="text-xs text-neutral-800 font-semibold">Click to upload schedule routine image or document</p>
+                        <Upload className="w-6 h-6 mx-auto text-[#FF6B4B] transition-transform group-hover:scale-110" />
+                        <p className="text-xs text-neutral-800 font-semibold">Click to upload schedule routine image or PDF document</p>
                         <p className="text-[10px] text-neutral-500 font-mono">Supports JPG, PNG, PDF with Gemini 2.5 Flash OCR</p>
                       </>
                     )}
@@ -856,43 +887,45 @@ export const OverviewGateScreen: React.FC = () => {
                     ) : (
                       <Sparkles className="w-4 h-4 text-[#FF6B4B]" />
                     )}
-                    <span>{isParsing ? 'PARSING TIMETABLE WITH GEMINI 2.5 FLASH...' : selectedFile ? 'AUTO-PARSE TIMETABLE WITH AI' : 'SELECT & AUTO-PARSE TIMETABLE WITH AI'}</span>
+                    <span>{isParsing ? 'AI Scanning Timetable Document...' : selectedFile ? 'AUTO-PARSE TIMETABLE WITH AI' : 'SELECT & AUTO-PARSE TIMETABLE WITH AI'}</span>
                   </button>
                 </>
               )}
 
-              {/* Primary Coral Action Button: Submit Form */}
-              <button
-                type="submit"
-                disabled={isCoordSubmitting || (isCoordSignIn ? !isCoordSignInValid : !isCoordSignUpValid)}
-                className="btn-primary w-full py-3.5 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold shadow-md shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {isCoordSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : isCoordSignIn ? (
-                  <LogIn className="w-4 h-4" />
-                ) : (
-                  <BookOpen className="w-4 h-4" />
-                )}
-                <span>
-                  {isCoordSubmitting
-                    ? isCoordSignIn ? 'SIGNING IN...' : 'CREATING BATCH & PERSISTING FIRESTORE...'
-                    : isCoordSignIn ? 'SIGN IN TO DASHBOARD' : 'INITIALIZE COORDINATOR BATCH'}
-                </span>
-              </button>
+              {/* Primary Action Button */}
+              <div className="mt-6 space-y-3.5">
+                <button
+                  type="submit"
+                  disabled={isCoordSubmitting || (isCoordSignIn ? !isCoordSignInValid : !isCoordSignUpValid)}
+                  className="btn-primary w-full py-4 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold shadow-md shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                >
+                  {isCoordSubmitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isCoordSignIn ? (
+                    <LogIn className="w-4 h-4" />
+                  ) : (
+                    <BookOpen className="w-4 h-4" />
+                  )}
+                  <span>
+                    {isCoordSubmitting
+                      ? isCoordSignIn ? 'SIGNING IN...' : 'CREATING BATCH & PERSISTING FIRESTORE...'
+                      : isCoordSignIn ? 'SIGN IN TO DASHBOARD' : 'INITIALIZE COORDINATOR BATCH'}
+                  </span>
+                </button>
+              </div>
             </form>
 
             {/* Dynamic Sign-In / Sign-Up Mode Toggle Link */}
-            <div className="pt-4 border-t border-amber-100 text-xs text-neutral-600 font-sans text-center">
+            <div className="pt-5 mt-6 border-t border-amber-100/80 text-xs text-neutral-600 font-sans text-center">
               {isCoordSignIn ? (
                 <span>
                   Need to create a new batch?{' '}
                   <button
                     type="button"
                     onClick={() => setIsCoordSignIn(false)}
-                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1"
                   >
-                    <span>Register as Coordinator (Sign Up)</span>
+                    Register as Coordinator (Sign Up)
                   </button>
                 </span>
               ) : (
@@ -901,9 +934,9 @@ export const OverviewGateScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsCoordSignIn(true)}
-                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1"
                   >
-                    <span>Sign In</span>
+                    Sign In
                   </button>
                 </span>
               )}
@@ -931,6 +964,23 @@ export const OverviewGateScreen: React.FC = () => {
               </span>
             </div>
 
+            {/* Extracted Subjects Summary */}
+            {parsedSubjects && parsedSubjects.length > 0 && (
+              <div className="bg-amber-50/60 border border-amber-200/60 rounded-2xl p-4 space-y-2">
+                <h4 className="font-jakarta font-bold text-neutral-900 text-xs uppercase tracking-wider text-amber-900">Extracted Subjects Roster</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {parsedSubjects.map((sub, sIdx) => (
+                    <div key={sIdx} className="bg-white border border-amber-200/80 px-3 py-2 rounded-xl text-xs space-y-0.5">
+                      <span className="font-mono font-bold text-[#FF6B4B] text-[11px] block">{sub.code}</span>
+                      <p className="font-semibold text-neutral-800 text-xs truncate">{sub.name}</p>
+                      <p className="text-[10px] text-neutral-500 font-mono truncate">{sub.faculty}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Timetable Slots Grid */}
             <div className="max-h-96 overflow-y-auto space-y-4 pr-1">
               {parsedTimetable.map((daySched, dIdx) => (
                 <div key={dIdx} className="bg-amber-50/50 border border-amber-100/80 rounded-2xl p-4 space-y-3">
@@ -942,7 +992,7 @@ export const OverviewGateScreen: React.FC = () => {
                     {daySched.slots?.map((slot, sIdx) => (
                       <div key={sIdx} className="bg-white border border-amber-200/80 p-3 rounded-xl text-xs space-y-1.5 shadow-xs">
                         <div className="flex justify-between items-center text-[10px] font-mono">
-                          <span className="font-bold text-[#FF6B4B]">{slot.subjectCode || 'LEC'}</span>
+                          <span className="font-bold text-[#FF6B4B]">{slot.code || 'LEC'}</span>
                           <span className="text-neutral-500">{slot.time}</span>
                         </div>
                         <input
@@ -969,7 +1019,7 @@ export const OverviewGateScreen: React.FC = () => {
                           />
                           <input
                             type="text"
-                            value={slot.room}
+                            value={slot.room || ''}
                             placeholder="Room"
                             onChange={(e) => {
                               const updated = [...parsedTimetable];

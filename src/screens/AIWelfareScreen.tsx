@@ -7,9 +7,11 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useOnboarding } from '../context/OnboardingContext';
 
 export const AIWelfareScreen: React.FC = () => {
   const { userProfile } = useApp();
+  const { studentProfile, coordinatorProfile } = useOnboarding();
 
   const [facultyName, setFacultyName] = useState('Dr. R. Sharma');
   const [subject, setSubject] = useState('CS601 Distributed Core Systems');
@@ -23,8 +25,8 @@ export const AIWelfareScreen: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const studentName = userProfile.fullName || 'Gaurav Bisht';
-  const rollNumber = userProfile.rollNumber || '21CS045';
+  const studentName = studentProfile?.fullName || coordinatorProfile?.fullName || userProfile.fullName || 'Student';
+  const rollNumber = studentProfile?.rollNumber || userProfile.rollNumber || 'Student ID';
 
   const [generatedEmail, setGeneratedEmail] = useState({
     subject: 'Request for Attendance Reinstatement — Distributed Core Systems (CS601)',
