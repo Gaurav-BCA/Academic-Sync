@@ -6,12 +6,12 @@ import {
   Edit3, 
   CheckCircle2, 
   XCircle, 
-  Clock, 
   ShieldCheck, 
   FileText,
   AlertCircle,
   X,
-  History
+  History,
+  Mail
 } from 'lucide-react';
 import { 
   StudentDetail, 
@@ -19,12 +19,20 @@ import {
   AuditLogEntry, 
   INITIAL_BATCH_STUDENTS 
 } from '../data/manageStudentsData';
+import { db } from '../services/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { useApp } from '../context/AppContext';
+import { useOnboarding } from '../context/OnboardingContext';
 
 const LS_STUDENTS_KEY = 'academicsync_managedStudents';
 const LS_AUDIT_KEY = 'academicsync_auditLogs';
 
 export const ManageStudentsScreen: React.FC = () => {
-  // Load students from localStorage or fallback to initial data
+  const { userProfile } = useApp();
+  const { coordinatorProfile } = useOnboarding();
+  const currentBatchCode = userProfile?.classCode || coordinatorProfile?.classCode || 'CS-8849';
+
+  // Load students state
   const [students, setStudents] = useState<StudentDetail[]>(() => {
     try {
       const stored = localStorage.getItem(LS_STUDENTS_KEY);
@@ -59,6 +67,46 @@ export const ManageStudentsScreen: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showAuditLogsView, setShowAuditLogsView] = useState(false);
 
+  // ──────────────────────────────────────────
+  // REAL-TIME FIRESTORE LISTENER FOR STUDENTS
+  // Query users collection where classCode == currentCoordinatorBatchCode and role == "student"
+  // ──────────────────────────────────────────
+  useEffect(() => {
+    if (!currentBatchCode) return;
+
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef,
+      where('classCode', '==', currentBatchCode),
+      where('role', '==', 'student')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const liveStudents: StudentDetail[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const existingStudent = students.find(s => s.rollNumber === data.rollNumber || s.email === data.email);
+        
+        liveStudents.push({
+          id: docSnap.id,
+          name: data.name || data.fullName || 'Student',
+          rollNumber: data.rollNumber || 'N/A',
+          email: data.email || 'N/A',
+          subjects: existingStudent?.subjects || INITIAL_BATCH_STUDENTS[0].subjects,
+          lectures: existingStudent?.lectures || INITIAL_BATCH_STUDENTS[0].lectures
+        });
+      });
+
+      if (liveStudents.length > 0) {
+        setStudents(liveStudents);
+      }
+    }, (err) => {
+      console.warn("Firestore student roster listener notice:", err);
+    });
+
+    return () => unsubscribe();
+  }, [currentBatchCode]);
+
   // Sync to localStorage
   useEffect(() => {
     try {
@@ -82,7 +130,8 @@ export const ManageStudentsScreen: React.FC = () => {
   // Filtered students list
   const filteredStudents = students.filter(s => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.rollNumber.toLowerCase().includes(searchQuery.toLowerCase())
+    s.rollNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.email && s.email.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // Helper: compute overall student attendance percentage
@@ -207,15 +256,15 @@ export const ManageStudentsScreen: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2 mb-1">
             <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block">
-              CLASS COORDINATOR MANAGEMENT PORTAL • SEM VI-A
+              CLASS COORDINATOR MANAGEMENT PORTAL • BATCH {currentBatchCode}
             </span>
             <span className="bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[9px] rounded-full font-mono font-bold uppercase">
-              COORDINATOR ONLY
+              LIVE FIRESTORE SNAPSHOT
             </span>
           </div>
           <h1 className="text-2xl font-jakarta font-bold text-neutral-900">Class Roster & Student Attendance Management</h1>
           <p className="text-xs text-neutral-600 mt-1 font-sans">
-            Review individual student attendance profiles, edit lecture records, and maintain verified audit trails for your class batch.
+            Review live student roster registered under class batch code <strong className="font-mono text-[#FF6B4B]">{currentBatchCode}</strong>.
           </p>
         </div>
 
@@ -319,7 +368,7 @@ export const ManageStudentsScreen: React.FC = () => {
               <div>
                 <span className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider">ENROLLED BATCH STUDENTS</span>
                 <div className="text-3xl font-jakarta font-bold text-neutral-900 mt-1 tnum">{students.length}</div>
-                <span className="text-[11px] text-emerald-700 font-medium mt-0.5 block">Active Cohort Sem VI-A</span>
+                <span className="text-[11px] text-emerald-700 font-medium mt-0.5 block">Active Cohort {currentBatchCode}</span>
               </div>
               <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center text-[#FF6B4B]">
                 <Users className="w-6 h-6" />
@@ -330,7 +379,7 @@ export const ManageStudentsScreen: React.FC = () => {
               <div>
                 <span className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider">BATCH AVG ATTENDANCE</span>
                 <div className="text-3xl font-jakarta font-bold text-neutral-900 mt-1 tnum">
-                  {Math.round(students.reduce((acc, s) => acc + calculateOverallPct(s), 0) / students.length * 10) / 10}%
+                  {students.length > 0 ? (Math.round(students.reduce((acc, s) => acc + calculateOverallPct(s), 0) / students.length * 10) / 10) : 0}%
                 </div>
                 <span className="text-[11px] text-emerald-700 font-medium mt-0.5 block">Compliant (&gt;75%)</span>
               </div>
@@ -356,7 +405,7 @@ export const ManageStudentsScreen: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h2 className="text-lg font-jakarta font-bold text-neutral-900 flex items-center space-x-2">
                 <Users className="w-5 h-5 text-[#FF6B4B]" />
-                <span>Class Students List</span>
+                <span>Class Students Live Roster ({filteredStudents.length})</span>
               </h2>
 
               {/* Search input */}
@@ -366,7 +415,7 @@ export const ManageStudentsScreen: React.FC = () => {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search name or roll number..."
+                  placeholder="Search name, roll number, or email..."
                   className="w-full bg-stone-50 border border-amber-200/80 focus:border-[#FF6B4B] text-neutral-900 rounded-xl pl-9 pr-3 py-2 text-xs font-mono outline-none transition-colors"
                 />
               </div>
@@ -377,10 +426,10 @@ export const ManageStudentsScreen: React.FC = () => {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-amber-100 text-neutral-400 text-[10px] font-mono uppercase tracking-wider">
-                    <th className="py-3.5 px-3">STUDENT NAME</th>
+                    <th className="py-3.5 px-3">FULL NAME</th>
                     <th className="py-3.5 px-3">ROLL NUMBER</th>
-                    <th className="py-3.5 px-3 text-center">ENROLLED SUBJECTS</th>
-                    <th className="py-3.5 px-3 text-right">OVERALL ATTENDANCE</th>
+                    <th className="py-3.5 px-3">EMAIL ADDRESS</th>
+                    <th className="py-3.5 px-3 text-right">OVERALL ATTENDANCE %</th>
                     <th className="py-3.5 px-3 text-center">STATUS</th>
                     <th className="py-3.5 px-3 text-right">ACTION</th>
                   </tr>
@@ -405,7 +454,12 @@ export const ManageStudentsScreen: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3.5 px-3 text-neutral-600 font-mono tnum">{student.rollNumber}</td>
-                        <td className="py-3.5 px-3 text-center text-neutral-500 font-mono tnum">{student.subjects.length} Modules</td>
+                        <td className="py-3.5 px-3 text-neutral-600 font-sans text-xs">
+                          <div className="flex items-center space-x-1.5">
+                            <Mail className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                            <span>{student.email || 'N/A'}</span>
+                          </div>
+                        </td>
                         <td className="py-3.5 px-3 text-right font-jakarta font-bold text-neutral-900 text-sm tnum">
                           {overallPct}%
                         </td>
@@ -461,7 +515,9 @@ export const ManageStudentsScreen: React.FC = () => {
                   <div className="flex items-center space-x-3 text-xs font-mono text-neutral-500 mt-0.5">
                     <span>Roll No: <strong className="text-neutral-800 tnum">{selectedStudent.rollNumber}</strong></span>
                     <span>•</span>
-                    <span>Batch: <strong className="text-[#FF6B4B] font-bold">CS-2025-A</strong></span>
+                    <span>Email: <strong className="text-neutral-800">{selectedStudent.email || 'N/A'}</strong></span>
+                    <span>•</span>
+                    <span>Batch Code: <strong className="text-[#FF6B4B] font-bold">{currentBatchCode}</strong></span>
                   </div>
                 </div>
               </div>

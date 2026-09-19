@@ -23,6 +23,7 @@ export interface StudentDetail {
   id: string;
   name: string;
   rollNumber: string;
+  email?: string;
   subjects: SubjectAttendance[];
   lectures: LectureRecord[];
 }

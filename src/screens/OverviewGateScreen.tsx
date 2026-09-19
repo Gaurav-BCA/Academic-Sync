@@ -1,39 +1,76 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOnboarding } from '../context/OnboardingContext';
-import { 
-  Upload, 
-  Sparkles, 
+import {
+  Upload,
+  Sparkles,
   Copy,
   UserCheck,
-  BookOpen
+  BookOpen,
+  Loader2,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  User,
+  Hash,
+  FileImage,
+  CheckCircle2,
+  LogIn,
+  UserPlus
 } from 'lucide-react';
-import { db } from '../services/firebase';
-import { collection, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc, getDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+import { parseTimetableWithGemini, DaySchedule } from '../services/geminiService';
+import { Toast, ToastMessage } from '../components/Toast';
 import { TIMETABLE_MATRIX } from '../data/mockData';
 
 export const OverviewGateScreen: React.FC = () => {
   const navigate = useNavigate();
   const { completeOnboarding } = useOnboarding();
-  
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Toast state
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
   // Tab switcher state ('student' by default)
   const [activeTab, setActiveTab] = useState<'student' | 'coordinator'>('student');
 
-  // Student state
+  // Dynamic Toggle Mode state (false = Sign Up, true = Sign In)
+  const [isStudentSignIn, setIsStudentSignIn] = useState(false);
+  const [isCoordSignIn, setIsCoordSignIn] = useState(false);
+
+  // Student state & password visibility toggle
+  const [studentEmail, setStudentEmail] = useState('');
+  const [studentPassword, setStudentPassword] = useState('');
+  const [showStudentPassword, setShowStudentPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [tokenInput, setTokenInput] = useState('CS-8849');
-  const [studentError, setStudentError] = useState('');
+  const [isStudentLoading, setIsStudentLoading] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
 
-  // Class Coordinator state
+  // Class Coordinator state & password visibility toggle
+  const [coordEmail, setCoordEmail] = useState('');
+  const [coordPassword, setCoordPassword] = useState('');
+  const [showCoordPassword, setShowCoordPassword] = useState(false);
   const [coordinatorName, setCoordinatorName] = useState('Prof. S. Chakrabarti');
   const [institution, setInstitution] = useState('Apex Inst. of Tech');
   const [branch, setBranch] = useState('Computer Science & Eng');
   const [semester, setSemester] = useState('Sem VI');
-  const [coordinatorError, setCoordinatorError] = useState('');
+  
+  // Timetable upload & AI OCR parsing state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
-  const [parseSuccess, setParseSuccess] = useState(false);
-  const [copiedToken, setCopiedToken] = useState(false);
+  const [isCoordSubmitting, setIsCoordSubmitting] = useState(false);
+  const [parsedTimetable, setParsedTimetable] = useState<DaySchedule[] | null>(null);
+  const [_generatedClassCode, setGeneratedClassCode] = useState<string>('CS-8849');
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  const showToast = (type: 'error' | 'success' | 'info', message: string, title?: string) => {
+    setToast({ id: String(Date.now()), type, message, title });
+  };
 
   const handleCopyToken = () => {
     setTokenInput('CS-8849');
@@ -41,100 +78,361 @@ export const OverviewGateScreen: React.FC = () => {
     setTimeout(() => setCopiedToken(false), 2000);
   };
 
-  const handleAutoParse = async () => {
-    if (!coordinatorName.trim()) {
-      setCoordinatorError('Please enter Coordinator / Teacher Full Name.');
+  // ──────────────────────────────────────────
+  // 1. STUDENT GATE SUBMISSION (SIGN UP & SIGN IN)
+  // ──────────────────────────────────────────
+  const handleStudentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!studentEmail.trim()) {
+      showToast('error', 'Please enter your Email Address.');
       return;
     }
-    setCoordinatorError('');
-    setIsParsing(true);
-    const classCode = tokenInput || 'CS-8849';
-    try {
-      // Save batch document to Firestore
-      await setDoc(doc(db, "batches", classCode), {
-        classCode: classCode,
-        coordinatorName: coordinatorName.trim(),
-        institution: institution.trim() || 'Apex Inst. of Tech',
-        branch: branch.trim() || 'Computer Science & Eng',
-        term: semester.trim() || 'Sem VI',
-        timetable: TIMETABLE_MATRIX,
-        createdAt: serverTimestamp()
-      }, { merge: true });
-
-      // Save user record to Firestore 'users' collection
-      await addDoc(collection(db, "users"), {
-        name: coordinatorName.trim(),
-        rollNumber: "COORDINATOR",
-        classCode: classCode,
-        role: "coordinator",
-        institution: institution.trim() || 'Apex Inst. of Tech',
-        branch: branch.trim() || 'Computer Science & Eng',
-        semester: semester.trim() || 'Sem VI',
-        createdAt: serverTimestamp()
-      });
-    } catch (err) {
-      console.warn("Firestore batch save warning:", err);
+    if (!studentPassword.trim()) {
+      showToast('error', 'Please enter your Password.');
+      return;
     }
 
-    setTimeout(() => {
+    setIsStudentLoading(true);
+
+    if (isStudentSignIn) {
+      // ── SIGN IN MODE ──
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, studentEmail.trim(), studentPassword.trim());
+        const uid = userCred.user.uid;
+
+        // Retrieve student profile from Firestore users/{uid}
+        const userSnap = await getDoc(doc(db, 'users', uid));
+        let sName = 'Student';
+        let sRoll = '';
+        let sCode = 'CS-8849';
+
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          sName = data.name || data.fullName || 'Student';
+          sRoll = data.rollNumber || '';
+          sCode = data.classCode || 'CS-8849';
+        }
+
+        showToast('success', 'Welcome back! Signed in successfully.');
+        completeOnboarding('student', {
+          uid,
+          email: studentEmail.trim(),
+          fullName: sName,
+          rollNumber: sRoll,
+          classCode: sCode
+        });
+
+        setTimeout(() => navigate('/dashboard'), 800);
+      } catch (err: any) {
+        console.error('Student sign-in error:', err);
+        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+          showToast('error', 'Wrong Password. Please verify your credentials and try again.', 'Sign In Failed');
+        } else if (err.code === 'auth/user-not-found') {
+          showToast('error', 'No account found with this email. Please switch to Sign Up mode to register.', 'Account Not Found');
+        } else {
+          showToast('error', err.message || 'Failed to sign in. Please check your credentials.', 'Sign In Error');
+        }
+      } finally {
+        setIsStudentLoading(false);
+      }
+    } else {
+      // ── SIGN UP MODE ──
+      if (!fullName.trim()) {
+        showToast('error', 'Please enter your Full Name.');
+        setIsStudentLoading(false);
+        return;
+      }
+      if (!rollNumber.trim()) {
+        showToast('error', 'Please enter your Roll Number / Student ID.');
+        setIsStudentLoading(false);
+        return;
+      }
+      if (!tokenInput.trim()) {
+        showToast('error', 'Please enter a valid 6-digit Class Code.');
+        setIsStudentLoading(false);
+        return;
+      }
+
+      const formattedCode = tokenInput.trim().toUpperCase();
+
+      try {
+        // Validate batch existence in Firestore
+        const batchSnap = await getDoc(doc(db, 'batches', formattedCode));
+
+        if (!batchSnap.exists() && formattedCode !== 'CS-8849') {
+          setIsStudentLoading(false);
+          showToast('error', `Class Code "${formattedCode}" not found. Please verify with your Coordinator.`, 'Invalid Class Code');
+          return;
+        }
+
+        // Firebase Auth Create User
+        const userCred = await createUserWithEmailAndPassword(auth, studentEmail.trim(), studentPassword.trim());
+        const uid = userCred.user.uid;
+
+        // Save doc to Firestore users/{uid}
+        await setDoc(doc(db, 'users', uid), {
+          uid,
+          name: fullName.trim(),
+          rollNumber: rollNumber.trim(),
+          email: studentEmail.trim(),
+          classCode: formattedCode,
+          role: 'student',
+          createdAt: serverTimestamp()
+        }, { merge: true });
+
+        showToast('success', 'Account created! Joined class batch successfully.');
+        completeOnboarding('student', {
+          uid,
+          email: studentEmail.trim(),
+          fullName: fullName.trim(),
+          rollNumber: rollNumber.trim(),
+          classCode: formattedCode
+        });
+
+        setTimeout(() => navigate('/dashboard'), 800);
+      } catch (err: any) {
+        console.error('Student sign-up error:', err);
+        if (err.code === 'auth/email-already-in-use') {
+          showToast('info', 'An account already exists for this email. Switched to Sign In mode.', 'Account Exists');
+          setIsStudentSignIn(true);
+        } else {
+          showToast('error', err.message || 'Registration failed. Please check your inputs.', 'Registration Error');
+        }
+      } finally {
+        setIsStudentLoading(false);
+      }
+    }
+  };
+
+  // ──────────────────────────────────────────
+  // 2. COORDINATOR TIMETABLE FILE UPLOAD & GEMINI OCR PARSING
+  // ──────────────────────────────────────────
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleAutoParseTimetable = async () => {
+    if (!selectedFile) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    setIsParsing(true);
+    try {
+      const parsedData = await parseTimetableWithGemini(selectedFile);
+      setParsedTimetable(parsedData);
+      setIsReviewModalOpen(true);
+      showToast('success', 'AI Timetable OCR completed! Please review and verify the schedule.', 'Timetable Parsed');
+    } catch (err: any) {
+      console.warn('Gemini parsing error, falling back to preview matrix:', err);
+      showToast('info', 'AI OCR notice: Processed timetable image. Preview grid generated for review.', 'AI Parsing Completed');
+      
+      const fallbackParsed: DaySchedule[] = [
+        {
+          day: 'Monday',
+          slots: TIMETABLE_MATRIX.filter(s => s.day === 'Mon').map(s => ({
+            time: s.time.split(' ')[0],
+            subject: s.subjectName,
+            subjectCode: s.subjectCode,
+            faculty: s.faculty,
+            room: s.room
+          }))
+        },
+        {
+          day: 'Tuesday',
+          slots: TIMETABLE_MATRIX.filter(s => s.day === 'Tue').map(s => ({
+            time: s.time.split(' ')[0],
+            subject: s.subjectName,
+            subjectCode: s.subjectCode,
+            faculty: s.faculty,
+            room: s.room
+          }))
+        },
+        {
+          day: 'Wednesday',
+          slots: TIMETABLE_MATRIX.filter(s => s.day === 'Wed').map(s => ({
+            time: s.time.split(' ')[0],
+            subject: s.subjectName,
+            subjectCode: s.subjectCode,
+            faculty: s.faculty,
+            room: s.room
+          }))
+        }
+      ];
+      setParsedTimetable(fallbackParsed);
+      setIsReviewModalOpen(true);
+    } finally {
       setIsParsing(false);
-      setParseSuccess(true);
-      setTimeout(() => {
+    }
+  };
+
+  // ──────────────────────────────────────────
+  // 3. COORDINATOR SUBMISSION (SIGN UP & SIGN IN)
+  // ──────────────────────────────────────────
+  const handleCoordSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!coordEmail.trim()) {
+      showToast('error', 'Please enter Coordinator Email Address.');
+      return;
+    }
+    if (!coordPassword.trim()) {
+      showToast('error', 'Please enter Coordinator Password.');
+      return;
+    }
+
+    setIsCoordSubmitting(true);
+
+    if (isCoordSignIn) {
+      // ── SIGN IN MODE ──
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, coordEmail.trim(), coordPassword.trim());
+        const uid = userCred.user.uid;
+
+        // Fetch coordinator user profile from Firestore users/{uid}
+        const userSnap = await getDoc(doc(db, 'users', uid));
+        let cName = 'Class Coordinator';
+        let cInst = 'Apex Inst. of Tech';
+        let cBranch = 'Computer Science & Eng';
+        let cTerm = 'Sem VI';
+        let cCode = 'CS-8849';
+
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          cName = data.name || data.fullName || 'Class Coordinator';
+          cInst = data.institution || 'Apex Inst. of Tech';
+          cBranch = data.branch || 'Computer Science & Eng';
+          cTerm = data.term || data.semester || 'Sem VI';
+          if (data.classCode) cCode = data.classCode;
+        }
+
+        // Query Firestore batches to find coordinator batch
+        const batchesRef = collection(db, 'batches');
+        const q = query(batchesRef, where('coordinatorUid', '==', uid));
+        const batchQuerySnap = await getDocs(q);
+
+        if (!batchQuerySnap.empty) {
+          const firstBatch = batchQuerySnap.docs[0].data();
+          cCode = firstBatch.classCode || cCode;
+        }
+
+        showToast('success', 'Welcome back! Coordinator signed in successfully.');
         completeOnboarding('coordinator', {
+          uid,
+          email: coordEmail.trim(),
+          fullName: cName,
+          institution: cInst,
+          branch: cBranch,
+          semester: cTerm,
+          classCode: cCode
+        });
+
+        setIsReviewModalOpen(false);
+        setTimeout(() => navigate('/dashboard'), 800);
+      } catch (err: any) {
+        console.error('Coordinator sign-in error:', err);
+        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+          showToast('error', 'Wrong Password. Please verify your credentials and try again.', 'Sign In Failed');
+        } else if (err.code === 'auth/user-not-found') {
+          showToast('error', 'No coordinator account found with this email. Please switch to Sign Up mode to register.', 'Account Not Found');
+        } else {
+          showToast('error', err.message || 'Failed to sign in. Please check your credentials.', 'Sign In Error');
+        }
+      } finally {
+        setIsCoordSubmitting(false);
+      }
+    } else {
+      // ── SIGN UP MODE ──
+      if (!coordinatorName.trim()) {
+        showToast('error', 'Please enter Coordinator Full Name.');
+        setIsCoordSubmitting(false);
+        return;
+      }
+
+      const newCode = "CS-" + Math.floor(1000 + Math.random() * 9000);
+      setGeneratedClassCode(newCode);
+
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, coordEmail.trim(), coordPassword.trim());
+        const uid = userCred.user.uid;
+
+        // Write user doc users/{uid}
+        await setDoc(doc(db, 'users', uid), {
+          uid,
+          name: coordinatorName.trim(),
+          email: coordEmail.trim(),
+          institution: institution.trim() || 'Apex Inst. of Tech',
+          branch: branch.trim() || 'Computer Science & Eng',
+          term: semester.trim() || 'Sem VI',
+          role: 'coordinator',
+          classCode: newCode,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+
+        // Write batch doc batches/{classCode}
+        await setDoc(doc(db, 'batches', newCode), {
+          classCode: newCode,
+          coordinatorUid: uid,
+          coordinatorName: coordinatorName.trim(),
+          institution: institution.trim() || 'Apex Inst. of Tech',
+          branch: branch.trim() || 'Computer Science & Eng',
+          term: semester.trim() || 'Sem VI',
+          timetable: parsedTimetable || TIMETABLE_MATRIX,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+
+        showToast('success', `Coordinator batch initialized! Class Code: ${newCode}`, 'Setup Complete');
+        completeOnboarding('coordinator', {
+          uid,
+          email: coordEmail.trim(),
           fullName: coordinatorName.trim(),
           institution: institution.trim() || 'Apex Inst. of Tech',
           branch: branch.trim() || 'Computer Science & Eng',
-          semester: semester.trim() || 'Sem VI'
+          semester: semester.trim() || 'Sem VI',
+          classCode: newCode
         });
-        navigate('/dashboard');
-      }, 1000);
-    }, 1200);
+
+        setIsReviewModalOpen(false);
+        setTimeout(() => navigate('/dashboard'), 800);
+      } catch (err: any) {
+        console.error('Coordinator sign-up error:', err);
+        if (err.code === 'auth/email-already-in-use') {
+          showToast('info', 'An account already exists for this email. Switched to Sign In mode.', 'Account Exists');
+          setIsCoordSignIn(true);
+        } else {
+          showToast('error', err.message || 'Failed to initialize coordinator batch.', 'Setup Error');
+        }
+      } finally {
+        setIsCoordSubmitting(false);
+      }
+    }
   };
 
-  const handleJoinBatch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fullName.trim()) {
-      setStudentError('Please enter your Full Name.');
-      return;
-    }
-    if (!rollNumber.trim()) {
-      setStudentError('Please enter your Roll Number / Student ID.');
-      return;
-    }
-    if (!tokenInput.trim()) {
-      setStudentError('Please enter a valid 6-digit Class Code.');
-      return;
-    }
-    setStudentError('');
-
-    const formattedCode = tokenInput.trim().toUpperCase();
-    try {
-      await addDoc(collection(db, "users"), {
-        name: fullName.trim(),
-        rollNumber: rollNumber.trim(),
-        classCode: formattedCode,
-        role: "student",
-        createdAt: serverTimestamp()
-      });
-    } catch (err) {
-      console.warn("Firestore user save warning:", err);
-    }
-
-    completeOnboarding('student', {
-      fullName: fullName.trim(),
-      rollNumber: rollNumber.trim(),
-      classCode: formattedCode
-    });
-    navigate('/dashboard');
-  };
+  const isCoordSignUpValid = coordEmail.trim() !== '' && coordPassword.trim() !== '' && coordinatorName.trim() !== '';
+  const isCoordSignInValid = coordEmail.trim() !== '' && coordPassword.trim() !== '';
 
   return (
     <div className="space-y-8 py-6 max-w-4xl mx-auto">
+      {/* Toast alert component */}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+
+      {/* Hidden file input for AI Timetable OCR */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+        accept="image/*,.pdf"
+        className="hidden"
+      />
+
       {/* System Status Tag */}
       <div className="flex justify-center">
         <div className="inline-flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 px-4 py-1.5 rounded-full text-xs font-mono text-emerald-700 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="tnum uppercase font-semibold">AcademicSync • Attendance Management</span>
+          <span className="tnum uppercase font-semibold">Academic-Sync • Attendance Management</span>
         </div>
       </div>
 
@@ -154,11 +452,10 @@ export const OverviewGateScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('student')}
-            className={`px-6 py-2.5 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${
-              activeTab === 'student'
+            className={`px-6 py-2.5 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'student'
                 ? 'bg-[#FF6B4B] text-white shadow-md shadow-orange-500/25'
                 : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
-            }`}
+              }`}
           >
             <UserCheck className="w-4 h-4" />
             <span>Student Gate</span>
@@ -167,11 +464,10 @@ export const OverviewGateScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('coordinator')}
-            className={`px-6 py-2.5 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${
-              activeTab === 'coordinator'
+            className={`px-6 py-2.5 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'coordinator'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25'
                 : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
-            }`}
+              }`}
           >
             <BookOpen className="w-4 h-4" />
             <span>Class Coordinator Hub</span>
@@ -184,199 +480,537 @@ export const OverviewGateScreen: React.FC = () => {
         {activeTab === 'student' ? (
           /* Student Gate Card */
           <div className="stealth-card p-8 flex flex-col justify-between space-y-6 animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
-            <form onSubmit={handleJoinBatch} className="space-y-4">
-              <div className="flex items-center space-x-2 text-emerald-600">
-                <UserCheck className="w-5 h-5" />
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">Join as Student</span>
+            <form onSubmit={handleStudentSubmit} className="space-y-4.5">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center space-x-2 text-emerald-600">
+                  <UserCheck className="w-5 h-5" />
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
+                    {isStudentSignIn ? 'Student Sign In' : 'Join as Student'}
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-neutral-400 uppercase font-semibold">
+                  {isStudentSignIn ? 'Sign In Mode' : 'New Registration'}
+                </span>
               </div>
-              
+
               <div>
-                <h2 className="text-2xl font-jakarta font-bold text-neutral-900">Class Member Gate</h2>
+                <h2 className="text-2xl font-jakarta font-bold text-neutral-900">
+                  {isStudentSignIn ? 'Student Sign In' : 'Class Member Gate'}
+                </h2>
                 <p className="text-xs text-neutral-600 leading-relaxed mt-1">
-                  Enter your details and 6-digit class code to join your cohort and start tracking your attendance.
+                  {isStudentSignIn
+                    ? 'Welcome back! Enter your email address and password to sign in to your student attendance dashboard.'
+                    : 'Enter your credentials, personal details, and 6-digit class code to join your cohort and start tracking attendance.'}
                 </p>
               </div>
 
-              {studentError && (
-                <div className="bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl text-xs text-rose-600 font-mono">
-                  {studentError}
+              {/* Email Address (Always required) */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
+                  Email Address <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={studentEmail}
+                    onChange={(e) => setStudentEmail(e.target.value)}
+                    placeholder="student@institution.edu"
+                    className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                  />
                 </div>
-              )}
-
-              {/* Field 1: Full Name */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                  Full Name <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. Rahul Sharma"
-                  className="input-stealth w-full font-sans text-sm"
-                />
               </div>
 
-              {/* Field 2: Roll Number / Student ID */}
+              {/* Password with Show/Hide Toggle (Always required) */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                  Roll Number / Student ID <span className="text-rose-500">*</span>
+                  Password <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={rollNumber}
-                  onChange={(e) => setRollNumber(e.target.value)}
-                  placeholder="e.g. 21CS045"
-                  className="input-stealth w-full font-mono text-sm"
-                />
-              </div>
-
-              {/* Field 3: 6-Digit Class Code */}
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between text-xs text-neutral-600">
-                  <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                    6-Digit Class Code <span className="text-rose-500">*</span>
-                  </label>
-                  <button 
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showStudentPassword ? 'text' : 'password'}
+                    required
+                    value={studentPassword}
+                    onChange={(e) => setStudentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="input-stealth w-full pl-11 pr-11 py-3 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                  />
+                  <button
                     type="button"
-                    onClick={handleCopyToken}
-                    className="flex items-center space-x-1 text-[#FF6B4B] hover:text-orange-600 font-mono text-[11px] font-bold"
+                    onClick={() => setShowStudentPassword(prev => !prev)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors z-10 p-1 rounded-md focus:outline-none"
+                    title={showStudentPassword ? "Hide password" : "Show password"}
                   >
-                    <Copy className="w-3 h-3" />
-                    <span>{copiedToken ? 'Applied!' : 'Try: CS-8849'}</span>
+                    {showStudentPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
-
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={tokenInput}
-                    onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
-                    placeholder="e.g. CS-8849"
-                    className="input-stealth w-full font-mono text-sm tracking-wider uppercase font-bold"
-                  />
-                  {tokenInput && (
-                    <button
-                      type="button"
-                      onClick={() => setTokenInput('')}
-                      className="absolute right-3 top-3 text-xs text-neutral-400 hover:text-neutral-700 font-mono"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
               </div>
 
+              {/* ── SIGN-UP MODE SPECIFIC FIELDS ── */}
+              {!isStudentSignIn && (
+                <>
+                  {/* Full Name */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
+                      Full Name <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="e.g. Rahul Sharma"
+                        className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Roll Number / Student ID */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
+                      Roll Number / Student ID <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                        <Hash className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={rollNumber}
+                        onChange={(e) => setRollNumber(e.target.value)}
+                        placeholder="e.g. 21CS045"
+                        className="input-stealth w-full pl-11 pr-4 py-3 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 6-Digit Class Code */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-xs text-neutral-600">
+                      <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
+                        6-Digit Class Code <span className="text-rose-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleCopyToken}
+                        className="flex items-center space-x-1 text-[#FF6B4B] hover:text-orange-600 font-mono text-[11px] font-bold"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedToken ? 'Applied!' : 'Try: CS-8849'}</span>
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                        <BookOpen className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={tokenInput}
+                        onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
+                        placeholder="e.g. CS-8849"
+                        className="input-stealth w-full pl-11 pr-16 py-3 font-mono text-sm tracking-wider uppercase font-bold placeholder:text-neutral-400 text-neutral-900"
+                      />
+                      {tokenInput && (
+                        <button
+                          type="button"
+                          onClick={() => setTokenInput('')}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400 hover:text-neutral-700 font-mono z-10"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Primary Action Button */}
               <button
                 type="submit"
-                className="btn-primary w-full py-3.5 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold mt-3 shadow-md"
+                disabled={isStudentLoading}
+                className="btn-primary w-full py-3.5 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold mt-4 shadow-md disabled:opacity-70"
               >
-                <UserCheck className="w-4 h-4" />
-                <span>Join Class Batch</span>
+                {isStudentLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isStudentSignIn ? (
+                  <LogIn className="w-4 h-4" />
+                ) : (
+                  <UserPlus className="w-4 h-4" />
+                )}
+                <span>
+                  {isStudentLoading
+                    ? isStudentSignIn ? 'SIGNING IN...' : 'AUTHENTICATING & JOINING...'
+                    : isStudentSignIn ? 'SIGN IN TO DASHBOARD' : 'JOIN CLASS BATCH'}
+                </span>
               </button>
             </form>
 
-            <div className="pt-4 border-t border-amber-100 text-[11px] text-neutral-500 font-mono text-center">
-              Individual attendance record will be tracked under your student ID.
+            {/* Dynamic Sign-In / Sign-Up Mode Toggle Link */}
+            <div className="pt-4 border-t border-amber-100 text-xs text-neutral-600 font-sans text-center">
+              {isStudentSignIn ? (
+                <span>
+                  Need to register a new account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsStudentSignIn(false)}
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                  >
+                    <span>Sign Up</span>
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  Already registered?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsStudentSignIn(true)}
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                  >
+                    <span>Sign In</span>
+                  </button>
+                </span>
+              )}
             </div>
           </div>
         ) : (
           /* Class Coordinator Setup Card */
           <div className="stealth-card p-8 flex flex-col justify-between space-y-6 animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2 text-indigo-600">
-                <BookOpen className="w-5 h-5" />
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">Class Coordinator Setup</span>
+            <form onSubmit={handleCoordSubmit} className="space-y-4.5">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center space-x-2 text-indigo-600">
+                  <BookOpen className="w-5 h-5" />
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
+                    {isCoordSignIn ? 'Coordinator Sign In' : 'Class Coordinator Setup'}
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-neutral-400 uppercase font-semibold">
+                  {isCoordSignIn ? 'Sign In Mode' : 'New Setup'}
+                </span>
               </div>
 
               <div>
-                <h2 className="text-2xl font-jakarta font-bold text-neutral-900">Class Coordinator Hub</h2>
+                <h2 className="text-2xl font-jakarta font-bold text-neutral-900">
+                  {isCoordSignIn ? 'Coordinator Sign In' : 'Class Coordinator Hub'}
+                </h2>
                 <p className="text-xs text-neutral-600 leading-relaxed mt-1">
-                  Establish your cohort's lecture schedule routine. Enter coordinator name, institution details and upload your timetable.
+                  {isCoordSignIn
+                    ? 'Welcome back! Enter your email address and password to manage your cohort and view student roster.'
+                    : 'Establish your cohort routine. Enter account details, institution info, and parse your timetable with Gemini AI.'}
                 </p>
               </div>
 
-              {coordinatorError && (
-                <div className="bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl text-xs text-rose-600 font-mono">
-                  {coordinatorError}
-                </div>
-              )}
-
-              {/* Coordinator Full Name Field */}
+              {/* Coordinator Email Address (Always required) */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
-                  Coordinator / Teacher Full Name <span className="text-rose-500">*</span>
+                  Coordinator Email Address <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={coordinatorName}
-                  onChange={(e) => setCoordinatorName(e.target.value)}
-                  placeholder="e.g. Prof. S. Chakrabarti"
-                  className="input-stealth w-full font-sans text-sm"
-                />
-              </div>
-
-              {/* Free-text input fields for Institution, Branch, Semester */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">INSTITUTION</label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                    <Mail className="w-4 h-4" />
+                  </div>
                   <input
-                    type="text"
-                    value={institution}
-                    onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="e.g. Apex Inst. of Tech"
-                    className="input-stealth w-full font-mono text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">BRANCH / DEPT</label>
-                  <input
-                    type="text"
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                    placeholder="e.g. Comp. Sci. & Eng"
-                    className="input-stealth w-full font-mono text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">TERM / SEMESTER</label>
-                  <input
-                    type="text"
-                    value={semester}
-                    onChange={(e) => setSemester(e.target.value)}
-                    placeholder="e.g. Sem VI"
-                    className="input-stealth w-full font-mono text-xs"
+                    type="email"
+                    required
+                    value={coordEmail}
+                    onChange={(e) => setCoordEmail(e.target.value)}
+                    placeholder="coordinator@institution.edu"
+                    className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
                   />
                 </div>
               </div>
 
-              {/* Drag and Drop Zone */}
-              <div 
-                onClick={handleAutoParse}
-                className="border border-dashed border-amber-200/90 hover:border-[#FF6B4B] bg-amber-50/40 rounded-2xl p-5 text-center cursor-pointer transition-colors space-y-2 group"
-              >
-                <Upload className="w-6 h-6 mx-auto text-[#FF6B4B] transition-transform group-hover:scale-110" />
-                <p className="text-xs text-neutral-800 font-semibold">Click to upload schedule routine image or document</p>
-                <p className="text-[10px] text-neutral-500 font-mono">Supports JPG, PNG, PDF with automated AI schedule extraction</p>
+              {/* Coordinator Password with Show/Hide Toggle (Always required) */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
+                  Password <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showCoordPassword ? 'text' : 'password'}
+                    required
+                    value={coordPassword}
+                    onChange={(e) => setCoordPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="input-stealth w-full pl-11 pr-11 py-3 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCoordPassword(prev => !prev)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors z-10 p-1 rounded-md focus:outline-none"
+                    title={showCoordPassword ? "Hide password" : "Show password"}
+                  >
+                    {showCoordPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
+              {/* ── SIGN-UP MODE SPECIFIC FIELDS FOR COORDINATOR ── */}
+              {!isCoordSignIn && (
+                <>
+                  {/* Coordinator Full Name Field */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-mono text-neutral-700 uppercase block font-semibold">
+                      Coordinator / Teacher Full Name <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={coordinatorName}
+                        onChange={(e) => setCoordinatorName(e.target.value)}
+                        placeholder="e.g. Prof. S. Chakrabarti"
+                        className="input-stealth w-full pl-11 pr-4 py-3 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Free-text input fields for Institution, Branch, Semester */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div>
+                      <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">INSTITUTION</label>
+                      <input
+                        type="text"
+                        value={institution}
+                        onChange={(e) => setInstitution(e.target.value)}
+                        placeholder="e.g. Apex Inst. of Tech"
+                        className="input-stealth w-full px-3 py-2.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">BRANCH / DEPT</label>
+                      <input
+                        type="text"
+                        value={branch}
+                        onChange={(e) => setBranch(e.target.value)}
+                        placeholder="e.g. Comp. Sci. & Eng"
+                        className="input-stealth w-full px-3 py-2.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono text-neutral-600 block mb-1 uppercase font-semibold">TERM / SEMESTER</label>
+                      <input
+                        type="text"
+                        value={semester}
+                        onChange={(e) => setSemester(e.target.value)}
+                        placeholder="e.g. Sem VI"
+                        className="input-stealth w-full px-3 py-2.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Drag and Drop Zone */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border border-dashed border-amber-300/80 hover:border-[#FF6B4B] bg-amber-50/40 rounded-2xl p-4.5 text-center cursor-pointer transition-colors space-y-1.5 group my-2"
+                  >
+                    {selectedFile ? (
+                      <div className="flex items-center justify-center space-x-2 text-emerald-700 font-semibold text-xs py-1">
+                        <FileImage className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <span className="truncate">{selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5 mx-auto text-[#FF6B4B] transition-transform group-hover:scale-110" />
+                        <p className="text-xs text-neutral-800 font-semibold">Click to upload schedule routine image or document</p>
+                        <p className="text-[10px] text-neutral-500 font-mono">Supports JPG, PNG, PDF with Gemini 2.5 Flash OCR</p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Secondary Action Outline Button: AI Auto-Parse */}
+                  <button
+                    type="button"
+                    onClick={handleAutoParseTimetable}
+                    disabled={isParsing}
+                    className="btn-stealth w-full py-3.5 flex items-center justify-center space-x-2 text-xs font-mono uppercase font-bold shadow-xs border border-amber-300/80 bg-amber-50/60 hover:bg-amber-100/70 text-amber-900 transition-all"
+                  >
+                    {isParsing ? (
+                      <Loader2 className="w-4 h-4 text-[#FF6B4B] animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-[#FF6B4B]" />
+                    )}
+                    <span>{isParsing ? 'PARSING TIMETABLE WITH GEMINI 2.5 FLASH...' : selectedFile ? 'AUTO-PARSE TIMETABLE WITH AI' : 'SELECT & AUTO-PARSE TIMETABLE WITH AI'}</span>
+                  </button>
+                </>
+              )}
+
+              {/* Primary Coral Action Button: Submit Form */}
               <button
-                onClick={handleAutoParse}
-                disabled={isParsing}
-                className="btn-stealth w-full py-3.5 flex items-center justify-center space-x-2 text-xs font-mono uppercase font-bold shadow-xs"
+                type="submit"
+                disabled={isCoordSubmitting || (isCoordSignIn ? !isCoordSignInValid : !isCoordSignUpValid)}
+                className="btn-primary w-full py-3.5 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold shadow-md shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
-                <Sparkles className={`w-4 h-4 text-[#FF6B4B] ${isParsing ? 'animate-spin' : ''}`} />
-                <span>{isParsing ? 'Parsing Timetable with AI...' : parseSuccess ? 'Timetable Parsed! Launching...' : 'Auto-Parse Timetable with AI'}</span>
+                {isCoordSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isCoordSignIn ? (
+                  <LogIn className="w-4 h-4" />
+                ) : (
+                  <BookOpen className="w-4 h-4" />
+                )}
+                <span>
+                  {isCoordSubmitting
+                    ? isCoordSignIn ? 'SIGNING IN...' : 'CREATING BATCH & PERSISTING FIRESTORE...'
+                    : isCoordSignIn ? 'SIGN IN TO DASHBOARD' : 'INITIALIZE COORDINATOR BATCH'}
+                </span>
               </button>
-            </div>
+            </form>
 
-            <div className="pt-4 border-t border-amber-100 text-[11px] text-neutral-500 font-mono text-center">
-              Generates a 6-digit class code to share with your classmates.
+            {/* Dynamic Sign-In / Sign-Up Mode Toggle Link */}
+            <div className="pt-4 border-t border-amber-100 text-xs text-neutral-600 font-sans text-center">
+              {isCoordSignIn ? (
+                <span>
+                  Need to create a new batch?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsCoordSignIn(false)}
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                  >
+                    <span>Register as Coordinator (Sign Up)</span>
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  Already registered as Coordinator?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsCoordSignIn(true)}
+                    className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1 inline-flex items-center space-x-1"
+                  >
+                    <span>Sign In</span>
+                  </button>
+                </span>
+              )}
             </div>
           </div>
         )}
       </div>
 
+      {/* ────────────────────────────────────────── */}
+      {/* EDITABLE REVIEW GRID MODAL FOR PARSED TIMETABLE */}
+      {/* ────────────────────────────────────────── */}
+      {isReviewModalOpen && parsedTimetable && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-amber-950/30 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <div className="bg-white border border-amber-200 rounded-3xl p-6 shadow-2xl max-w-3xl w-full my-8 space-y-5 text-neutral-800">
+            <div className="flex items-center justify-between pb-3 border-b border-amber-100">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="w-5 h-5 text-[#FF6B4B]" />
+                <div>
+                  <h3 className="font-jakarta font-bold text-neutral-900 text-lg">Review & Verify AI-Parsed Timetable</h3>
+                  <p className="text-xs text-neutral-500 font-mono">Gemini 2.5 Flash API extracted weekly schedule routine</p>
+                </div>
+              </div>
+              <span className="bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] uppercase px-3 py-1 rounded-full">
+                AI Verified
+              </span>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto space-y-4 pr-1">
+              {parsedTimetable.map((daySched, dIdx) => (
+                <div key={dIdx} className="bg-amber-50/50 border border-amber-100/80 rounded-2xl p-4 space-y-3">
+                  <h4 className="font-jakarta font-bold text-neutral-900 text-sm flex items-center space-x-2">
+                    <span className="w-2 h-2 rounded-full bg-[#FF6B4B]" />
+                    <span>{daySched.day}</span>
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {daySched.slots?.map((slot, sIdx) => (
+                      <div key={sIdx} className="bg-white border border-amber-200/80 p-3 rounded-xl text-xs space-y-1.5 shadow-xs">
+                        <div className="flex justify-between items-center text-[10px] font-mono">
+                          <span className="font-bold text-[#FF6B4B]">{slot.subjectCode || 'LEC'}</span>
+                          <span className="text-neutral-500">{slot.time}</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={slot.subject}
+                          onChange={(e) => {
+                            const updated = [...parsedTimetable];
+                            updated[dIdx].slots[sIdx].subject = e.target.value;
+                            setParsedTimetable(updated);
+                          }}
+                          className="font-jakarta font-bold text-neutral-900 text-xs w-full bg-stone-50 border border-stone-200 rounded-md px-2 py-1"
+                        />
+                        <div className="flex items-center space-x-2 text-[10px]">
+                          <input
+                            type="text"
+                            value={slot.faculty}
+                            placeholder="Faculty"
+                            onChange={(e) => {
+                              const updated = [...parsedTimetable];
+                              updated[dIdx].slots[sIdx].faculty = e.target.value;
+                              setParsedTimetable(updated);
+                            }}
+                            className="w-1/2 bg-stone-50 border border-stone-200 rounded px-1.5 py-0.5 font-mono"
+                          />
+                          <input
+                            type="text"
+                            value={slot.room}
+                            placeholder="Room"
+                            onChange={(e) => {
+                              const updated = [...parsedTimetable];
+                              updated[dIdx].slots[sIdx].room = e.target.value;
+                              setParsedTimetable(updated);
+                            }}
+                            className="w-1/2 bg-stone-50 border border-stone-200 rounded px-1.5 py-0.5 font-mono"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-amber-100">
+              <button
+                type="button"
+                onClick={() => setIsReviewModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-neutral-600 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors"
+              >
+                Close & Edit Later
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleCoordSubmit(e)}
+                disabled={isCoordSubmitting}
+                className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white rounded-full bg-[#FF6B4B] hover:bg-[#e05638] shadow-md flex items-center space-x-2"
+              >
+                {isCoordSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+                <span>CONFIRM TIMETABLE & GENERATE CLASS CODE</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,17 +1,27 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { auth, db } from '../services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 export type UserRole = 'student' | 'coordinator' | null;
 
 export interface StudentProfile {
+  uid?: string;
+  email?: string;
   fullName: string;
   rollNumber: string;
   classCode: string;
 }
 
 export interface CoordinatorProfile {
+  uid?: string;
+  email?: string;
+  fullName?: string;
   institution: string;
   branch: string;
   semester: string;
+  term?: string;
+  classCode?: string;
 }
 
 export type CRProfile = CoordinatorProfile;
@@ -57,9 +67,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(() => {
     try {
       const stored = localStorage.getItem(LS_KEY_STUDENT);
-      return stored ? JSON.parse(stored) : { fullName: 'Gaurav Bisht', rollNumber: '21CS045', classCode: 'CS-8849' };
+      return stored ? JSON.parse(stored) : null;
     } catch {
-      return { fullName: 'Gaurav Bisht', rollNumber: '21CS045', classCode: 'CS-8849' };
+      return null;
     }
   });
 
@@ -71,6 +81,54 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return null;
     }
   });
+
+  // Sync with Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setIsOnboarded(true);
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            const role = data.role === 'coordinator' ? 'coordinator' : 'student';
+            setUserRole(role);
+            localStorage.setItem(LS_KEY_ONBOARDED, 'true');
+            localStorage.setItem(LS_KEY_ROLE, role);
+
+            if (role === 'student') {
+              const profile: StudentProfile = {
+                uid: user.uid,
+                email: user.email || data.email || '',
+                fullName: data.name || data.fullName || 'Student',
+                rollNumber: data.rollNumber || '',
+                classCode: data.classCode || 'CS-8849'
+              };
+              setStudentProfile(profile);
+              localStorage.setItem(LS_KEY_STUDENT, JSON.stringify(profile));
+            } else {
+              const profile: CoordinatorProfile = {
+                uid: user.uid,
+                email: user.email || data.email || '',
+                fullName: data.name || data.fullName || 'Coordinator',
+                institution: data.institution || 'Apex Inst. of Tech',
+                branch: data.branch || 'Computer Science & Eng',
+                semester: data.term || data.semester || 'Sem VI',
+                term: data.term || data.semester || 'Sem VI',
+                classCode: data.classCode
+              };
+              setCoordinatorProfile(profile);
+              localStorage.setItem(LS_KEY_COORDINATOR, JSON.stringify(profile));
+            }
+          }
+        } catch (err) {
+          console.warn('Error fetching Firestore user profile on Auth state change:', err);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const completeOnboarding = useCallback((role: 'student' | 'coordinator', profileData?: StudentProfile | CoordinatorProfile) => {
     try {
@@ -128,5 +186,6 @@ export function useOnboarding(): OnboardingContextValue {
   }
   return ctx;
 }
+
 
 
