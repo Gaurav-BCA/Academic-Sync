@@ -10,11 +10,11 @@ import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
 
 export const AIWelfareScreen: React.FC = () => {
-  const { userProfile } = useApp();
+  const { userProfile, subjects: appSubjects } = useApp();
   const { studentProfile, coordinatorProfile } = useOnboarding();
 
-  const [facultyName, setFacultyName] = useState('Dr. R. Sharma');
-  const [subject, setSubject] = useState('CS601 Distributed Core Systems');
+  const [facultyName, setFacultyName] = useState('Mrs. Meenakshi Manchanda');
+  const [subject, setSubject] = useState('BCA 512 Java Programming');
   const [date, setDate] = useState('2026-09-17');
   const [reasonCategory, setReasonCategory] = useState('Fest / Event Duty');
   const [informalInput, setInformalInput] = useState(
@@ -29,10 +29,10 @@ export const AIWelfareScreen: React.FC = () => {
   const rollNumber = studentProfile?.rollNumber || userProfile.rollNumber || 'Student ID';
 
   const [generatedEmail, setGeneratedEmail] = useState({
-    subject: 'Request for Attendance Reinstatement — Distributed Core Systems (CS601)',
-    body: `Respected Dr. R. Sharma,
+    subject: 'Request for Attendance Reinstatement — Java Programming (BCA 512)',
+    body: `Respected Mrs. Meenakshi Manchanda,
 
-I am writing to formally request attendance reinstatement for the Distributed Core Systems (CS601) lecture conducted on September 17, 2026. 
+I am writing to formally request attendance reinstatement for the Java Programming (BCA 512) lecture conducted on September 17, 2026. 
 
 On the specified date, I was officially assigned to duty representing the institution at the NSS Placement Drive in the Main Auditorium, pursuant to official institutional approval.
 
@@ -136,10 +136,18 @@ Apex Institute of Technology`
                 onChange={(e) => setSubject(e.target.value)}
                 className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
               >
-                <option>CS601 Distributed Core Systems</option>
-                <option>CS602 Computer Networks</option>
-                <option>CS609 Machine Learning & AI</option>
-                <option>CS604 Compiler Engineering</option>
+                {appSubjects && appSubjects.length > 0 ? (
+                  appSubjects.map(s => (
+                    <option key={s.id} value={`${s.code} ${s.name}`}>{s.code} {s.name}</option>
+                  ))
+                ) : (
+                  <>
+                    <option>BCA 512 Java Programming</option>
+                    <option>BCA 513 Computer Graphics</option>
+                    <option>BCA 514 Software Engineering</option>
+                    <option>BCA 515 Web Technologies</option>
+                  </>
+                )}
               </select>
             </div>
 

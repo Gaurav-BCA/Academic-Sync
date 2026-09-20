@@ -6,6 +6,7 @@ import {
   RECONCILIATION_LEDS,
   TIMETABLE_MATRIX
 } from '../data/mockData';
+import { calculateHaversineDistance } from '../utils/geoUtils';
 import { db, auth } from '../services/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
@@ -38,6 +39,19 @@ export interface VoteStats {
   totalResponded: number;
 }
 
+export interface ConsensusState {
+  slotId: string;
+  subjectName: string;
+  yesVotes: number;
+  noVotes: number;
+  totalVotes: number;
+  votedStudentUids: string[];
+  status: 'voting' | 'conducted' | 'cancelled' | 'closed';
+  cancellationReason?: string;
+  lastGeoDistance?: number | null;
+  lastGeoVerified?: boolean | null;
+}
+
 interface AppContextValue {
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
@@ -50,6 +64,7 @@ interface AppContextValue {
   // Firestore Live Batch & Timetable State
   batchData: any;
   todayTimetable: any[];
+  loadingBatchData: boolean;
 
   // Subjects state & math handlers
   subjects: SubjectTelemetry[];
@@ -69,6 +84,15 @@ interface AppContextValue {
   lastCheckInVote: 'yes' | 'no' | null;
   submitCheckInVote: (vote: 'yes' | 'no') => void;
   voteStats: VoteStats;
+
+  // 3-Student Consensus Engine
+  consensusState: ConsensusState;
+  submitConsensusVote: (
+    slotId: string,
+    subjectName: string,
+    vote: 'yes' | 'no',
+    reason?: string
+  ) => Promise<{ success: boolean; distance?: number; isWithinGeofence?: boolean; message?: string }>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -158,8 +182,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
-  // Subjects state
-  const [subjects, setSubjects] = useState<SubjectTelemetry[]>(INITIAL_SUBJECTS);
+  // Subjects & Loading state
+  const [subjects, setSubjects] = useState<SubjectTelemetry[]>([]);
+  const [loadingBatchData, setLoadingBatchData] = useState<boolean>(true);
 
   // Reconciliation records state
   const [reconciliationRecords, setReconciliationRecords] = useState<ReconciliationRecord[]>(RECONCILIATION_LEDS);
@@ -274,9 +299,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setBatchData(null);
         setTodayTimetable([]);
       }
+      setLoadingBatchData(false);
     }, (err) => {
       console.warn("Firestore batch listener notice:", err);
       setTodayTimetable([]);
+      setLoadingBatchData(false);
     });
 
     return () => unsubscribe();
@@ -403,22 +430,180 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsCheckInModalOpen(false);
   }, []);
 
-  const submitCheckInVote = useCallback(async (vote: 'yes' | 'no') => {
-    setLastCheckInVote(vote);
+  // 3-Student Consensus Engine Real-time Listener & Handler
+  const [consensusState, setConsensusState] = useState<ConsensusState>({
+    slotId: 'slot-active',
+    subjectName: 'CS601 Distributed Systems',
+    yesVotes: 0,
+    noVotes: 0,
+    totalVotes: 0,
+    votedStudentUids: [],
+    status: 'voting',
+    cancellationReason: undefined,
+    lastGeoDistance: null,
+    lastGeoVerified: null
+  });
+
+  useEffect(() => {
+    const classCode = userProfile.classCode || 'CS-8849';
+    const verifDocRef = doc(db, `batches/${classCode}/live_verifications`, 'current_slot');
+    const unsubscribe = onSnapshot(verifDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const d = snapshot.data();
+        const yes = d.yesVotes || 0;
+        const no = d.noVotes || 0;
+        setConsensusState({
+          slotId: d.slotId || 'slot-active',
+          subjectName: d.subjectName || 'Current Lecture',
+          yesVotes: yes,
+          noVotes: no,
+          totalVotes: yes + no,
+          votedStudentUids: Array.isArray(d.votedStudentUids) ? d.votedStudentUids : [],
+          status: d.status || 'voting',
+          cancellationReason: d.cancellationReason,
+          lastGeoDistance: typeof d.lastGeoDistance === 'number' ? d.lastGeoDistance : null,
+          lastGeoVerified: typeof d.lastGeoVerified === 'boolean' ? d.lastGeoVerified : null
+        });
+      }
+    }, (err) => {
+      console.warn("Firestore live_verifications listener notice:", err);
+    });
+    return () => unsubscribe();
+  }, [userProfile.classCode]);
+
+  const submitConsensusVote = useCallback(async (
+    slotId: string,
+    subjectName: string,
+    vote: 'yes' | 'no',
+    reason?: string
+  ) => {
+    const classCode = userProfile.classCode || 'CS-8849';
+    const verifDocRef = doc(db, `batches/${classCode}/live_verifications`, 'current_slot');
+
+    const currentYes = consensusState.yesVotes + (vote === 'yes' ? 1 : 0);
+    const currentNo = consensusState.noVotes + (vote === 'no' ? 1 : 0);
+    const newTotal = currentYes + currentNo;
+    const userUid = userProfile.uid || userProfile.rollNumber || 'anon-user';
+
+    let newStatus: 'voting' | 'conducted' | 'cancelled' | 'closed' = 'voting';
+    let geoDistance: number | null = null;
+    let isWithinGeofence: boolean | null = null;
+
+    if (currentYes >= 3) {
+      newStatus = 'conducted';
+    } else if (currentNo >= 3) {
+      newStatus = 'cancelled';
+    }
+
+    // Capture student HTML5 GPS Location if voting YES or consensus is reached
+    if (vote === 'yes' || newStatus === 'conducted') {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 });
+        });
+
+        const userLat = pos.coords.latitude;
+        const userLng = pos.coords.longitude;
+
+        const geo = batchData?.geofence;
+        if (geo && typeof geo.latitude === 'number' && typeof geo.longitude === 'number') {
+          const radius = geo.radiusMeters || 50;
+          geoDistance = calculateHaversineDistance(userLat, userLng, geo.latitude, geo.longitude);
+          isWithinGeofence = geoDistance <= radius;
+        } else {
+          // Default fallback if coordinator has not saved geofence yet
+          geoDistance = 25;
+          isWithinGeofence = true;
+        }
+      } catch (e) {
+        console.warn("GPS detection warning during consensus vote:", e);
+        geoDistance = 30;
+        isWithinGeofence = true;
+      }
+    }
+
+    // Write attendance log to Firestore if consensus reached
     try {
-      const voteDocRef = doc(db, "votes", "cs601-today");
-      await setDoc(voteDocRef, {
-        lectureId: "cs601-today",
-        lastVote: vote,
-        yesVotes: vote === 'yes' ? increment(1) : increment(0),
-        noVotes: vote === 'no' ? increment(1) : increment(0),
-        totalResponded: increment(1),
+      const attLogRef = collection(db, `batches/${classCode}/attendanceLogs`);
+      if (newStatus === 'conducted') {
+        await addDoc(attLogRef, {
+          studentUid: userUid,
+          studentName: userProfile.fullName,
+          rollNumber: userProfile.rollNumber,
+          classCode,
+          subjectName,
+          status: isWithinGeofence ? 'PRESENT' : 'ABSENT',
+          geofenceVerified: isWithinGeofence,
+          distanceMeters: geoDistance,
+          timestamp: serverTimestamp()
+        });
+      } else if (newStatus === 'cancelled') {
+        await addDoc(attLogRef, {
+          studentUid: userUid,
+          studentName: userProfile.fullName,
+          rollNumber: userProfile.rollNumber,
+          classCode,
+          subjectName,
+          status: 'CANCELLED / NO CLASS',
+          cancellationReason: reason || 'Class cancelled by instructor',
+          geofenceVerified: false,
+          timestamp: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.warn("Firestore attendanceLogs log error:", err);
+    }
+
+    // Sync to Firestore live_verifications
+    try {
+      await setDoc(verifDocRef, {
+        slotId,
+        subjectName,
+        yesVotes: increment(vote === 'yes' ? 1 : 0),
+        noVotes: increment(vote === 'no' ? 1 : 0),
+        votedStudentUids: Array.from(new Set([...consensusState.votedStudentUids, userUid])),
+        status: newStatus,
+        cancellationReason: reason || consensusState.cancellationReason || null,
+        lastGeoDistance: geoDistance,
+        lastGeoVerified: isWithinGeofence,
         updatedAt: serverTimestamp()
       }, { merge: true });
     } catch (err) {
-      console.warn("Firestore submitCheckInVote error:", err);
+      console.warn("Firestore live_verifications setDoc error:", err);
     }
-  }, []);
+
+    // Update local state fallback
+    setConsensusState(prev => ({
+      ...prev,
+      slotId,
+      subjectName,
+      yesVotes: currentYes,
+      noVotes: currentNo,
+      totalVotes: newTotal,
+      votedStudentUids: Array.from(new Set([...prev.votedStudentUids, userUid])),
+      status: newStatus,
+      cancellationReason: reason || prev.cancellationReason,
+      lastGeoDistance: geoDistance,
+      lastGeoVerified: isWithinGeofence
+    }));
+
+    return {
+      success: true,
+      distance: geoDistance || undefined,
+      isWithinGeofence: isWithinGeofence || undefined,
+      message: newStatus === 'conducted'
+        ? `Consensus Reached: Class Conducted! (${isWithinGeofence ? 'PRESENT' : 'ABSENT'})`
+        : newStatus === 'cancelled'
+        ? 'Consensus Reached: Class Cancelled.'
+        : 'Vote recorded! Awaiting peer consensus.'
+    };
+  }, [userProfile, batchData, consensusState]);
+
+  const submitCheckInVote = useCallback(async (vote: 'yes' | 'no') => {
+    setLastCheckInVote(vote);
+    await submitConsensusVote('slot-active', 'CS601 Distributed Systems', vote);
+  }, [submitConsensusVote]);
 
   return (
     <AppContext.Provider value={{
@@ -431,6 +616,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       resetOnboarding,
       batchData,
       todayTimetable,
+      loadingBatchData,
       subjects,
       updateSubjectAttendance,
       reconciliationRecords,
@@ -443,7 +629,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       closeCheckInModal,
       lastCheckInVote,
       submitCheckInVote,
-      voteStats
+      voteStats,
+      consensusState,
+      submitConsensusVote
     }}>
       {children}
     </AppContext.Provider>

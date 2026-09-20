@@ -7,8 +7,15 @@ import {
   ChevronUp,
   Calendar,
   Grid,
-  Users
+  Users,
+  MapPin,
+  Navigation,
+  Save,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
+import { db } from '../services/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { 
   ResponsiveContainer, 
   AreaChart, 
@@ -21,6 +28,7 @@ import {
 import { TIMETABLE_MATRIX } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
+import { useLectureVerificationWindow } from '../hooks/useLectureVerificationWindow';
 
 interface DashboardScreenProps {
   onOpenVotingModal: () => void;
@@ -81,10 +89,97 @@ const HeroCircularMeter: React.FC<{ percentage: number; size?: number }> = ({ pe
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingModal }) => {
   const navigate = useNavigate();
-  const { subjects, userRole, userProfile, todayTimetable } = useApp();
+  const { subjects, userRole, userProfile, todayTimetable, loadingBatchData, batchData, consensusState, submitConsensusVote } = useApp();
   const { studentProfile, coordinatorProfile } = useOnboarding();
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('cs601');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('overall');
   const [skipCount, setSkipCount] = useState<number>(3);
+
+  // Phase 2: Lecture Verification Window & T-10 Min Notification Hook
+  const { verificationWindow, isWindowActive, triggerDemoWindow } = useLectureVerificationWindow(todayTimetable);
+
+  // Geofence Configurator State (Coordinator Hub)
+  const [geoLat, setGeoLat] = useState<string>(() => batchData?.geofence?.latitude?.toString() || '');
+  const [geoLng, setGeoLng] = useState<string>(() => batchData?.geofence?.longitude?.toString() || '');
+  const [geoRadius, setGeoRadius] = useState<number>(() => batchData?.geofence?.radiusMeters || 50);
+  const [isLocatingGeo, setIsLocatingGeo] = useState<boolean>(false);
+  const [isSavingGeo, setIsSavingGeo] = useState<boolean>(false);
+  const [geoToast, setGeoToast] = useState<string | null>(null);
+
+  // Sync state if batchData loads from Firestore
+  React.useEffect(() => {
+    if (batchData?.geofence?.latitude && batchData?.geofence?.longitude) {
+      setGeoLat(batchData.geofence.latitude.toString());
+      setGeoLng(batchData.geofence.longitude.toString());
+      if (batchData.geofence.radiusMeters) {
+        setGeoRadius(batchData.geofence.radiusMeters);
+      }
+    } else if (batchData && (!batchData.geofence || !batchData.geofence.latitude)) {
+      setGeoLat('');
+      setGeoLng('');
+    }
+  }, [batchData]);
+
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoToast('Geolocation is not supported by your browser.');
+      setTimeout(() => setGeoToast(null), 4000);
+      return;
+    }
+
+    setIsLocatingGeo(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude.toFixed(6);
+        const lng = position.coords.longitude.toFixed(6);
+        setGeoLat(lat);
+        setGeoLng(lng);
+        setIsLocatingGeo(false);
+        setGeoToast('Current GPS location detected successfully!');
+        setTimeout(() => setGeoToast(null), 4000);
+      },
+      (error) => {
+        console.warn("Geolocation detection error:", error);
+        setIsLocatingGeo(false);
+        setGeoToast('Could not fetch location. Please check browser location permissions.');
+        setTimeout(() => setGeoToast(null), 4000);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSaveGeofence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!geoLat.trim() || !geoLng.trim()) {
+      setGeoToast('Please enter or detect valid Latitude and Longitude.');
+      setTimeout(() => setGeoToast(null), 4000);
+      return;
+    }
+
+    const activeCode = userProfile.classCode || coordinatorProfile?.classCode || 'CS-8849';
+    if (!activeCode) return;
+
+    setIsSavingGeo(true);
+    try {
+      const batchDocRef = doc(db, "batches", activeCode);
+      await setDoc(batchDocRef, {
+        geofence: {
+          latitude: parseFloat(geoLat),
+          longitude: parseFloat(geoLng),
+          radiusMeters: geoRadius,
+          updatedAt: serverTimestamp()
+        }
+      }, { merge: true });
+
+      setGeoToast('Geofence location updated in Firestore!');
+      setTimeout(() => setGeoToast(null), 4000);
+    } catch (err) {
+      console.error("Firestore geofence save error:", err);
+      setGeoToast('Failed to save geofence settings to Firestore.');
+      setTimeout(() => setGeoToast(null), 4000);
+    } finally {
+      setIsSavingGeo(false);
+    }
+  };
 
   const isCoordinator = userRole === 'coordinator';
   const activeClassCode = userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-8849';
@@ -134,21 +229,46 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
   const [showAdvancedTools, setShowAdvancedTools] = useState<boolean>(false);
 
-  const selectedSubject = useMemo(() => subjects.find(s => s.id === selectedSubjectId) || subjects[0], [subjects, selectedSubjectId]);
+  const isOverallSelected = selectedSubjectId === 'overall';
+
+  const activeSimStats = useMemo(() => {
+    if (isOverallSelected) {
+      return {
+        id: 'overall',
+        name: 'Overall Attendance',
+        code: 'ALL',
+        attended: totalAttendedAll,
+        total: totalClassesAll,
+        percentage: overallPercentage
+      };
+    }
+    const sub = subjects.find(s => s.id === selectedSubjectId) || subjects[0];
+    return {
+      id: sub?.id || 'sub',
+      name: sub?.name || 'Subject',
+      code: sub?.code || 'SUB',
+      attended: sub?.attended || 0,
+      total: sub?.total || 0,
+      percentage: sub?.percentage || 100
+    };
+  }, [isOverallSelected, selectedSubjectId, subjects, totalAttendedAll, totalClassesAll, overallPercentage]);
+
+  // Baseline Attended, Total, and Percentage for Active Simulation Target
+  const currentSimAttended = activeSimStats.attended;
+  const currentSimTotal = activeSimStats.total;
+  const currentSimPercentage = activeSimStats.percentage;
 
   // Calculate What-If Projected Percentage
-  const currentAttended = selectedSubject.attended;
-  const currentTotal = selectedSubject.total;
-  const projectedTotal = currentTotal + skipCount;
-  const projectedPercentage = Number(((currentAttended / projectedTotal) * 100).toFixed(1));
+  const projectedTotal = currentSimTotal + skipCount;
+  const projectedPercentage = projectedTotal > 0 ? Number(((currentSimAttended / projectedTotal) * 100).toFixed(1)) : 100;
   const isProjectedSafe = projectedPercentage >= 75.0;
 
   // Chart data points for What-If projection curve
   const generateChartData = () => {
     const data = [];
     for (let i = 0; i <= 6; i++) {
-      const tot = currentTotal + i;
-      const pct = Number(((currentAttended / tot) * 100).toFixed(1));
+      const tot = currentSimTotal + i;
+      const pct = tot > 0 ? Number(((currentSimAttended / tot) * 100).toFixed(1)) : 100;
       data.push({
         cuts: `${i} Cuts`,
         percentage: pct,
@@ -161,17 +281,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
 
   // Attend Streak Simulator State & Calculation
   const [attendStreakCount, setAttendStreakCount] = useState<number>(5);
-  const streakTotalAttended = currentAttended + attendStreakCount;
-  const streakTotalClasses = currentTotal + attendStreakCount;
-  const streakProjectedPercentage = Number(((streakTotalAttended / streakTotalClasses) * 100).toFixed(1));
+  const streakTotalAttended = currentSimAttended + attendStreakCount;
+  const streakTotalClasses = currentSimTotal + attendStreakCount;
+  const streakProjectedPercentage = streakTotalClasses > 0 ? Number(((streakTotalAttended / streakTotalClasses) * 100).toFixed(1)) : 100;
   const isStreakProjectedSafe = streakProjectedPercentage >= 75.0;
 
   const generateStreakChartData = () => {
     const data = [];
     for (let i = 0; i <= 10; i++) {
-      const att = currentAttended + i;
-      const tot = currentTotal + i;
-      const pct = Number(((att / tot) * 100).toFixed(1));
+      const att = currentSimAttended + i;
+      const tot = currentSimTotal + i;
+      const pct = tot > 0 ? Number(((att / tot) * 100).toFixed(1)) : 100;
       data.push({
         classes: `+${i}`,
         percentage: pct,
@@ -230,6 +350,102 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
               </div>
             </div>
           </div>
+
+          {/* Toast Notification Banner */}
+          {geoToast && (
+            <div className="mt-4 p-3 bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-2xl font-mono text-xs flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span className="font-bold">{geoToast}</span>
+            </div>
+          )}
+
+          {/* Campus Geofence Boundary Configurator Widget */}
+          <div className="mt-6 pt-6 border-t border-purple-100 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-100 border border-orange-200 text-[#FF6B4B] flex items-center justify-center font-bold shrink-0">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-jakarta font-bold text-neutral-900 text-base">Campus Geofence Boundary Configurator</h3>
+                  <p className="text-xs text-neutral-500 font-sans">Set campus GPS coordinates and geo-fencing radius for student verification.</p>
+                </div>
+              </div>
+
+              {geoLat && geoLng ? (
+                <span className="px-3.5 py-1.5 rounded-full text-xs font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/80 shrink-0 tnum">
+                  ● GEOFENCE: ACTIVE ({geoRadius}m Radius)
+                </span>
+              ) : (
+                <span className="px-3.5 py-1.5 rounded-full text-xs font-mono font-bold bg-rose-100 text-rose-800 border border-rose-200/80 shrink-0 tnum">
+                  ● GEOFENCE: NOT CONFIGURED
+                </span>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveGeofence} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[10px] font-mono text-neutral-600 uppercase font-bold block mb-1">LATITUDE</label>
+                  <input
+                    type="text"
+                    value={geoLat}
+                    onChange={(e) => setGeoLat(e.target.value)}
+                    placeholder="e.g. 29.193090"
+                    className="w-full font-mono text-xs bg-purple-50/40 border border-purple-200/80 focus:border-[#FF6B4B] rounded-xl px-3 py-2.5 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-mono text-neutral-600 uppercase font-bold block mb-1">LONGITUDE</label>
+                  <input
+                    type="text"
+                    value={geoLng}
+                    onChange={(e) => setGeoLng(e.target.value)}
+                    placeholder="e.g. 79.518721"
+                    className="w-full font-mono text-xs bg-purple-50/40 border border-purple-200/80 focus:border-[#FF6B4B] rounded-xl px-3 py-2.5 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] font-mono text-neutral-600 uppercase font-bold">RADIUS (METERS)</label>
+                    <span className="text-xs font-mono font-bold text-[#FF6B4B] bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200 tnum">{geoRadius}m</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="200"
+                    step="5"
+                    value={geoRadius}
+                    onChange={(e) => setGeoRadius(parseInt(e.target.value, 10))}
+                    className="w-full h-2 bg-purple-200/70 rounded-full appearance-none cursor-pointer accent-[#FF6B4B] mt-2.5"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleGetCurrentLocation}
+                  disabled={isLocatingGeo}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200/80 rounded-full font-mono text-xs font-semibold flex items-center justify-center space-x-2 transition-colors shadow-xs disabled:opacity-50"
+                >
+                  {isLocatingGeo ? <Loader2 className="w-4 h-4 animate-spin text-purple-600" /> : <Navigation className="w-4 h-4 text-indigo-600" />}
+                  <span>Use My Current Location</span>
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSavingGeo}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-[#FF6B4B] hover:bg-[#FF5533] text-white rounded-full font-mono text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 shadow-md shadow-orange-500/20 transition-all disabled:opacity-50"
+                >
+                  {isSavingGeo ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <Save className="w-4 h-4 text-white" />}
+                  <span>Save Geofence Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </section>
       ) : (
         <section className="stealth-card p-6 md:p-8 border border-amber-100 shadow-xl shadow-amber-900/5 bg-white rounded-3xl relative overflow-hidden">
@@ -258,6 +474,14 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
                   <Radio className="w-4 h-4" />
                   <span>Check In To Live Class</span>
                 </button>
+
+                <button
+                  onClick={() => triggerDemoWindow()}
+                  className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 rounded-full font-mono text-xs font-semibold flex items-center space-x-2 transition-all shadow-xs"
+                >
+                  <Radio className="w-4 h-4 text-indigo-600 animate-pulse" />
+                  <span>Test T-10 Min Verification Window</span>
+                </button>
               </div>
             </div>
 
@@ -265,6 +489,63 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
             <HeroCircularMeter percentage={overallPercentage} size={150} />
 
           </div>
+
+          {/* Phase 2: Prominent 3-Student Peer Consensus Verification Banner */}
+          {(isWindowActive || consensusState.status === 'voting') && (
+            <div className="mt-6 pt-6 border-t border-amber-200/70 space-y-4 animate-fade-in">
+              <div className="bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-indigo-500/10 border border-emerald-300 p-5 rounded-2xl space-y-4 shadow-sm">
+                
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-3">
+                    <span className="relative flex h-3.5 w-3.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+                    </span>
+                    <div>
+                      <span className="text-[11px] font-mono font-bold text-emerald-800 uppercase tracking-wide bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                        ATTENDANCE VERIFICATION WINDOW OPEN
+                      </span>
+                      <h3 className="text-lg font-jakarta font-bold text-neutral-900 mt-1">
+                        Was {verificationWindow?.subjectName || consensusState.subjectName || 'CS601 Distributed Systems'} conducted today?
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span className="text-xs font-mono font-bold text-neutral-600 block">3-Student Peer Consensus</span>
+                    <span className="text-sm font-mono font-extrabold text-emerald-700 tnum">
+                      {consensusState.yesVotes + consensusState.noVotes} / 3 Votes Logged
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-amber-200/60 text-xs font-mono">
+                  <p className="text-neutral-600 text-xs font-sans">
+                    📍 HTML5 GPS location is automatically checked against saved campus geofence boundary upon voting.
+                  </p>
+
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={onOpenVotingModal}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs font-bold rounded-full shadow-md shadow-emerald-600/20 transition-all flex items-center space-x-1.5"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                      <span>YES — Conducted</span>
+                    </button>
+
+                    <button
+                      onClick={onOpenVotingModal}
+                      className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-mono text-xs font-bold rounded-full shadow-md shadow-rose-600/20 transition-all flex items-center space-x-1.5"
+                    >
+                      <Radio className="w-4 h-4 text-white" />
+                      <span>NO — Cancelled</span>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -280,7 +561,12 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
         </div>
 
         <div className="space-y-3">
-          {scheduleItems.length === 0 ? (
+          {loadingBatchData ? (
+            <div className="space-y-3">
+              <div className="animate-pulse bg-amber-100/60 border border-amber-200/60 rounded-2xl h-20 p-4" />
+              <div className="animate-pulse bg-amber-100/60 border border-amber-200/60 rounded-2xl h-20 p-4" />
+            </div>
+          ) : scheduleItems.length === 0 ? (
             <div className="bg-amber-50/60 border border-amber-200/80 rounded-3xl py-10 px-8 sm:px-10 text-center space-y-4 shadow-xs">
               <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-xs">
                 <Calendar className="w-6 h-6" />
@@ -383,7 +669,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {subjects.map((sub) => {
+            {loadingBatchData ? (
+              <>
+                <div className="animate-pulse bg-amber-50/80 border border-amber-200/70 rounded-2xl h-40 p-6 space-y-3" />
+                <div className="animate-pulse bg-amber-50/80 border border-amber-200/70 rounded-2xl h-40 p-6 space-y-3" />
+                <div className="animate-pulse bg-amber-50/80 border border-amber-200/70 rounded-2xl h-40 p-6 space-y-3" />
+                <div className="animate-pulse bg-amber-50/80 border border-amber-200/70 rounded-2xl h-40 p-6 space-y-3" />
+              </>
+            ) : subjects.length === 0 ? (
+              <div className="col-span-2 text-center py-10 bg-amber-50/40 border border-amber-200/60 rounded-2xl text-xs font-mono text-neutral-500">
+                No subjects recorded for batch <strong className="text-neutral-900">{activeClassCode}</strong> in Firestore.
+              </div>
+            ) : (
+              subjects.map((sub) => {
               const isCardExpanded = expandedSubjectId === sub.id;
               return (
                 <div 
@@ -468,7 +766,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
                   )}
                 </div>
               );
-            })}
+            })
+          )}
           </div>
         </section>
       )}
@@ -513,6 +812,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
                     onChange={(e) => setSelectedSubjectId(e.target.value)}
                     className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
                   >
+                    <option value="overall">
+                      Overall Attendance — Current: {overallPercentage}%
+                    </option>
                     {subjects.map((sub) => (
                       <option key={sub.id} value={sub.id}>
                         {sub.name} ({sub.code}) — Current: {sub.percentage}%
@@ -569,13 +871,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
                   </ResponsiveContainer>
                 </div>
 
-                <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
+                <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs transition-colors duration-300 ${
                   isProjectedSafe 
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
                     : 'bg-rose-50 border-rose-200 text-rose-700'
                 }`}>
                   <span className="font-semibold">Projected Attendance:</span>
-                  <span className="font-bold tnum text-sm">{selectedSubject.percentage}% → {projectedPercentage}%</span>
+                  <span className="font-bold tnum text-sm">{currentSimPercentage}% → {projectedPercentage}%</span>
                 </div>
               </div>
 
@@ -593,6 +895,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
                     onChange={(e) => setSelectedSubjectId(e.target.value)}
                     className="input-stealth w-full font-mono text-xs bg-white border-amber-200"
                   >
+                    <option value="overall">
+                      Overall Attendance — Current: {overallPercentage}%
+                    </option>
                     {subjects.map((sub) => (
                       <option key={sub.id} value={sub.id}>
                         {sub.name} ({sub.code}) — Current: {sub.percentage}%
@@ -649,13 +954,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onOpenVotingMo
                   </ResponsiveContainer>
                 </div>
 
-                <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
+                <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs transition-colors duration-300 ${
                   isStreakProjectedSafe 
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                    : 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-700'
                 }`}>
                   <span className="font-semibold">Projected Attendance:</span>
-                  <span className="font-bold tnum text-sm">{selectedSubject.percentage}% → {streakProjectedPercentage}%</span>
+                  <span className="font-bold tnum text-sm">{currentSimPercentage}% → {streakProjectedPercentage}%</span>
                 </div>
               </div>
 
