@@ -69,7 +69,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
   };
 
   return (
-    <div className="sticky top-3 z-40 px-3 sm:px-6">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-[92%] max-w-6xl backdrop-blur-md bg-[#FFF9F2]/90 border border-amber-200/80 shadow-lg rounded-full px-6 py-2.5 transition-all duration-200">
       <header className="max-w-[1240px] mx-auto bg-white/95 backdrop-blur-md border border-amber-200/60 rounded-full px-4 py-2.5 shadow-xl shadow-amber-900/5 transition-all">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
 

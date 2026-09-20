@@ -13,7 +13,7 @@ export interface LectureRecord {
   subjectCode: string;
   subjectName: string;
   faculty: string;
-  status: 'Present' | 'Absent';
+  status: 'Present' | 'Absent' | 'No Class Conducted';
   lastEditedAt?: string;
   lastEditedBy?: string;
   editReason?: string;
@@ -37,8 +37,8 @@ export interface AuditLogEntry {
   subjectCode: string;
   subjectName: string;
   date: string;
-  oldStatus: 'Present' | 'Absent';
-  newStatus: 'Present' | 'Absent';
+  oldStatus: 'Present' | 'Absent' | 'No Class Conducted';
+  newStatus: 'Present' | 'Absent' | 'No Class Conducted';
   reason: string;
   editedBy: string;
   timestamp: string;
@@ -50,17 +50,18 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Alex Rivera',
     rollNumber: '21CS045',
     subjects: [
-      { subjectCode: 'CS603', subjectName: 'Advanced Algorithms', attended: 32, total: 34, percentage: 94.1 },
-      { subjectCode: 'CS602', subjectName: 'Cloud Computing', attended: 36, total: 38, percentage: 94.7 },
-      { subjectCode: 'CS609', subjectName: 'Machine Learning & AI', attended: 43, total: 46, percentage: 93.5 },
-      { subjectCode: 'CS604', subjectName: 'Compiler Engineering', attended: 35, total: 38, percentage: 92.1 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 35, total: 38, percentage: 92.1 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 36, total: 38, percentage: 94.7 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 34, total: 38, percentage: 89.5 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 35, total: 38, percentage: 92.1 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 36, total: 38, percentage: 94.7 }
     ],
     lectures: [
-      { id: 'lec-101', date: '2026-09-17', time: '09:00 - 10:00 AM', subjectCode: 'CS603', subjectName: 'Advanced Algorithms', faculty: 'Prof. S. Chakrabarti', status: 'Present' },
-      { id: 'lec-102', date: '2026-09-16', time: '10:15 - 11:15 AM', subjectCode: 'CS602', subjectName: 'Cloud Computing', faculty: 'Prof. S. Chen', status: 'Present' },
-      { id: 'lec-103', date: '2026-09-15', time: '01:45 - 03:15 PM', subjectCode: 'CS609', subjectName: 'Machine Learning & AI', faculty: 'Dr. P. Narayan', status: 'Present' },
-      { id: 'lec-104', date: '2026-09-14', time: '11:30 - 12:30 PM', subjectCode: 'CS604', subjectName: 'Compiler Engineering', faculty: 'Dr. V. Swaminathan', status: 'Absent' },
-      { id: 'lec-105', date: '2026-09-12', time: '09:00 - 10:00 AM', subjectCode: 'CS603', subjectName: 'Advanced Algorithms', faculty: 'Prof. S. Chakrabarti', status: 'Present' }
+      { id: 'lec-101', date: '2026-09-18', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 512', subjectName: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda', status: 'Present' },
+      { id: 'lec-102', date: '2026-09-18', time: '09:40 AM - 10:40 AM', subjectCode: 'BCA 513', subjectName: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar', status: 'Present' },
+      { id: 'lec-103', date: '2026-09-17', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 514', subjectName: 'Software Engineering', faculty: 'Prof. Sunita Sharma', status: 'Present' },
+      { id: 'lec-104', date: '2026-09-17', time: '10:50 AM - 11:50 AM', subjectCode: 'BCA 516', subjectName: 'Database Management Systems', faculty: 'Dr. Neha Gupta', status: 'Absent' },
+      { id: 'lec-105', date: '2026-09-16', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 515', subjectName: 'Web Technologies', faculty: 'Mr. Amit Verma', status: 'Present' }
     ]
   },
   {
@@ -68,16 +69,17 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Priya Sharma',
     rollNumber: '21CS012',
     subjects: [
-      { subjectCode: 'CS603', subjectName: 'Advanced Algorithms', attended: 33, total: 34, percentage: 97.1 },
-      { subjectCode: 'CS602', subjectName: 'Cloud Computing', attended: 37, total: 38, percentage: 97.4 },
-      { subjectCode: 'CS609', subjectName: 'Machine Learning & AI', attended: 44, total: 46, percentage: 95.7 },
-      { subjectCode: 'CS604', subjectName: 'Compiler Engineering', attended: 36, total: 38, percentage: 94.7 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 37, total: 38, percentage: 97.4 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 37, total: 38, percentage: 97.4 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 36, total: 38, percentage: 94.7 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 37, total: 38, percentage: 97.4 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 36, total: 38, percentage: 94.7 }
     ],
     lectures: [
-      { id: 'lec-201', date: '2026-09-17', time: '09:00 - 10:00 AM', subjectCode: 'CS603', subjectName: 'Advanced Algorithms', faculty: 'Prof. S. Chakrabarti', status: 'Present' },
-      { id: 'lec-202', date: '2026-09-16', time: '10:15 - 11:15 AM', subjectCode: 'CS602', subjectName: 'Cloud Computing', faculty: 'Prof. S. Chen', status: 'Present' },
-      { id: 'lec-203', date: '2026-09-15', time: '01:45 - 03:15 PM', subjectCode: 'CS609', subjectName: 'Machine Learning & AI', faculty: 'Dr. P. Narayan', status: 'Present' },
-      { id: 'lec-204', date: '2026-09-14', time: '11:30 - 12:30 PM', subjectCode: 'CS604', subjectName: 'Compiler Engineering', faculty: 'Dr. V. Swaminathan', status: 'Present' }
+      { id: 'lec-201', date: '2026-09-18', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 512', subjectName: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda', status: 'Present' },
+      { id: 'lec-202', date: '2026-09-18', time: '09:40 AM - 10:40 AM', subjectCode: 'BCA 513', subjectName: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar', status: 'Present' },
+      { id: 'lec-203', date: '2026-09-17', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 514', subjectName: 'Software Engineering', faculty: 'Prof. Sunita Sharma', status: 'Present' },
+      { id: 'lec-204', date: '2026-09-17', time: '10:50 AM - 11:50 AM', subjectCode: 'BCA 516', subjectName: 'Database Management Systems', faculty: 'Dr. Neha Gupta', status: 'Present' }
     ]
   },
   {
@@ -85,15 +87,16 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'David Chen',
     rollNumber: '21CS018',
     subjects: [
-      { subjectCode: 'CS603', subjectName: 'Advanced Algorithms', attended: 31, total: 34, percentage: 91.2 },
-      { subjectCode: 'CS602', subjectName: 'Cloud Computing', attended: 35, total: 38, percentage: 92.1 },
-      { subjectCode: 'CS609', subjectName: 'Machine Learning & AI', attended: 42, total: 46, percentage: 91.3 },
-      { subjectCode: 'CS604', subjectName: 'Compiler Engineering', attended: 34, total: 38, percentage: 89.5 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 34, total: 38, percentage: 89.5 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 35, total: 38, percentage: 92.1 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 33, total: 38, percentage: 86.8 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 34, total: 38, percentage: 89.5 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 35, total: 38, percentage: 92.1 }
     ],
     lectures: [
-      { id: 'lec-301', date: '2026-09-17', time: '09:00 - 10:00 AM', subjectCode: 'CS603', subjectName: 'Advanced Algorithms', faculty: 'Prof. S. Chakrabarti', status: 'Present' },
-      { id: 'lec-302', date: '2026-09-16', time: '10:15 - 11:15 AM', subjectCode: 'CS602', subjectName: 'Cloud Computing', faculty: 'Prof. S. Chen', status: 'Absent' },
-      { id: 'lec-303', date: '2026-09-15', time: '01:45 - 03:15 PM', subjectCode: 'CS609', subjectName: 'Machine Learning & AI', faculty: 'Dr. P. Narayan', status: 'Present' }
+      { id: 'lec-301', date: '2026-09-18', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 512', subjectName: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda', status: 'Present' },
+      { id: 'lec-302', date: '2026-09-18', time: '09:40 AM - 10:40 AM', subjectCode: 'BCA 513', subjectName: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar', status: 'Absent' },
+      { id: 'lec-303', date: '2026-09-17', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 514', subjectName: 'Software Engineering', faculty: 'Prof. Sunita Sharma', status: 'Present' }
     ]
   },
   {
@@ -101,15 +104,16 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Sarah Jenkins',
     rollNumber: '21CS024',
     subjects: [
-      { subjectCode: 'CS603', subjectName: 'Advanced Algorithms', attended: 29, total: 34, percentage: 85.3 },
-      { subjectCode: 'CS602', subjectName: 'Cloud Computing', attended: 33, total: 38, percentage: 86.8 },
-      { subjectCode: 'CS609', subjectName: 'Machine Learning & AI', attended: 39, total: 46, percentage: 84.8 },
-      { subjectCode: 'CS604', subjectName: 'Compiler Engineering', attended: 31, total: 38, percentage: 81.6 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 31, total: 38, percentage: 81.6 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 32, total: 38, percentage: 84.2 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 30, total: 38, percentage: 78.9 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 31, total: 38, percentage: 81.6 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 32, total: 38, percentage: 84.2 }
     ],
     lectures: [
-      { id: 'lec-401', date: '2026-09-17', time: '09:00 - 10:00 AM', subjectCode: 'CS603', subjectName: 'Advanced Algorithms', faculty: 'Prof. S. Chakrabarti', status: 'Present' },
-      { id: 'lec-402', date: '2026-09-16', time: '10:15 - 11:15 AM', subjectCode: 'CS602', subjectName: 'Cloud Computing', faculty: 'Prof. S. Chen', status: 'Absent' },
-      { id: 'lec-403', date: '2026-09-15', time: '01:45 - 03:15 PM', subjectCode: 'CS609', subjectName: 'Machine Learning & AI', faculty: 'Dr. P. Narayan', status: 'Absent' }
+      { id: 'lec-401', date: '2026-09-18', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 512', subjectName: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda', status: 'Present' },
+      { id: 'lec-402', date: '2026-09-18', time: '09:40 AM - 10:40 AM', subjectCode: 'BCA 513', subjectName: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar', status: 'Absent' },
+      { id: 'lec-403', date: '2026-09-17', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 514', subjectName: 'Software Engineering', faculty: 'Prof. Sunita Sharma', status: 'Absent' }
     ]
   },
   {
@@ -117,16 +121,17 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Marcus Thorne',
     rollNumber: '21CS031',
     subjects: [
-      { subjectCode: 'CS603', subjectName: 'Advanced Algorithms', attended: 27, total: 34, percentage: 79.4 },
-      { subjectCode: 'CS602', subjectName: 'Cloud Computing', attended: 30, total: 38, percentage: 78.9 },
-      { subjectCode: 'CS609', subjectName: 'Machine Learning & AI', attended: 36, total: 46, percentage: 78.3 },
-      { subjectCode: 'CS604', subjectName: 'Compiler Engineering', attended: 27, total: 38, percentage: 71.0 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 27, total: 38, percentage: 71.1 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 28, total: 38, percentage: 73.7 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 26, total: 38, percentage: 68.4 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 27, total: 38, percentage: 71.1 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 28, total: 38, percentage: 73.7 }
     ],
     lectures: [
-      { id: 'lec-501', date: '2026-09-17', time: '09:00 - 10:00 AM', subjectCode: 'CS603', subjectName: 'Advanced Algorithms', faculty: 'Prof. S. Chakrabarti', status: 'Absent' },
-      { id: 'lec-502', date: '2026-09-16', time: '10:15 - 11:15 AM', subjectCode: 'CS602', subjectName: 'Cloud Computing', faculty: 'Prof. S. Chen', status: 'Present' },
-      { id: 'lec-503', date: '2026-09-15', time: '01:45 - 03:15 PM', subjectCode: 'CS609', subjectName: 'Machine Learning & AI', faculty: 'Dr. P. Narayan', status: 'Absent' },
-      { id: 'lec-504', date: '2026-09-14', time: '11:30 - 12:30 PM', subjectCode: 'CS604', subjectName: 'Compiler Engineering', faculty: 'Dr. V. Swaminathan', status: 'Absent' }
+      { id: 'lec-501', date: '2026-09-18', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 512', subjectName: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda', status: 'Absent' },
+      { id: 'lec-502', date: '2026-09-18', time: '09:40 AM - 10:40 AM', subjectCode: 'BCA 513', subjectName: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar', status: 'Present' },
+      { id: 'lec-503', date: '2026-09-17', time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 514', subjectName: 'Software Engineering', faculty: 'Prof. Sunita Sharma', status: 'Absent' },
+      { id: 'lec-504', date: '2026-09-17', time: '10:50 AM - 11:50 AM', subjectCode: 'BCA 516', subjectName: 'Database Management Systems', faculty: 'Dr. Neha Gupta', status: 'Absent' }
     ]
   }
 ];

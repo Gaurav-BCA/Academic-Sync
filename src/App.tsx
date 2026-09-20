@@ -42,7 +42,7 @@ function AppShell() {
       )}
 
       {/* Main container */}
-      <main className="max-w-7xl mx-auto px-4 lg:px-8 w-full flex-grow py-4">
+      <main className={`max-w-7xl mx-auto px-4 lg:px-8 w-full flex-grow py-4 ${isOnboarded ? 'pt-24 sm:pt-28' : 'pt-4'}`}>
         <Suspense fallback={<RouteLoadingFallback />}>
           <Routes>
             {/* ── Onboarding routes: redirect to /dashboard if already onboarded ── */}

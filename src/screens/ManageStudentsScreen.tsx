@@ -11,9 +11,14 @@ import {
   AlertCircle,
   X,
   History,
-  Mail
+  Mail,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  MinusCircle
 } from 'lucide-react';
 import { 
+  SubjectAttendance,
   StudentDetail, 
   LectureRecord, 
   AuditLogEntry, 
@@ -23,12 +28,13 @@ import { db } from '../services/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
+import { calculateStudentAttendanceStats } from '../utils/attendanceMath';
 
 const LS_STUDENTS_KEY = 'academicsync_managedStudents';
 const LS_AUDIT_KEY = 'academicsync_auditLogs';
 
 export const ManageStudentsScreen: React.FC = () => {
-  const { userProfile } = useApp();
+  const { userProfile, batchData } = useApp();
   const { coordinatorProfile } = useOnboarding();
   const currentBatchCode = userProfile?.classCode || coordinatorProfile?.classCode || 'CS-8849';
 
@@ -61,11 +67,61 @@ export const ManageStudentsScreen: React.FC = () => {
     lecture: LectureRecord;
   } | null>(null);
 
-  const [newStatus, setNewStatus] = useState<'Present' | 'Absent'>('Present');
+  const [newStatus, setNewStatus] = useState<'Present' | 'Absent' | 'No Class Conducted'>('Present');
   const [editReason, setEditReason] = useState('');
   const [reasonError, setReasonError] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showAuditLogsView, setShowAuditLogsView] = useState(false);
+
+  // Date Accordion expansion state
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
+
+  const toggleDateExpanded = (dateStr: string) => {
+    setExpandedDates(prev => ({
+      ...prev,
+      [dateStr]: !prev[dateStr]
+    }));
+  };
+
+  // Derive active batch subjects from Firestore batchData
+  const activeBatchSubjects: SubjectAttendance[] = useMemo(() => {
+    if (batchData?.subjects && Array.isArray(batchData.subjects) && batchData.subjects.length > 0) {
+      return batchData.subjects.map((s: any) => ({
+        subjectCode: s.code,
+        subjectName: s.name || s.subject || 'Class Subject',
+        attended: 35,
+        total: 38,
+        percentage: 92.1
+      }));
+    }
+    if (batchData?.timetable && Array.isArray(batchData.timetable)) {
+      const map = new Map<string, any>();
+      batchData.timetable.forEach((dayObj: any) => {
+        if (Array.isArray(dayObj.slots)) {
+          dayObj.slots.forEach((slot: any) => {
+            const code = slot.code || slot.subjectCode;
+            if (code && !map.has(code)) {
+              map.set(code, {
+                subjectCode: code,
+                subjectName: slot.subject || slot.name || slot.subjectName || 'Class Subject',
+                attended: 35,
+                total: 38,
+                percentage: 92.1
+              });
+            }
+          });
+        }
+      });
+      if (map.size > 0) return Array.from(map.values());
+    }
+    return [
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 35, total: 38, percentage: 92.1 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 36, total: 38, percentage: 94.7 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 34, total: 38, percentage: 89.5 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 35, total: 38, percentage: 92.1 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 36, total: 38, percentage: 94.7 }
+    ];
+  }, [batchData]);
 
   // ──────────────────────────────────────────
   // REAL-TIME FIRESTORE LISTENER FOR STUDENTS
@@ -92,7 +148,7 @@ export const ManageStudentsScreen: React.FC = () => {
           name: data.name || data.fullName || 'Student',
           rollNumber: data.rollNumber || 'N/A',
           email: data.email || 'N/A',
-          subjects: existingStudent?.subjects || INITIAL_BATCH_STUDENTS[0].subjects,
+          subjects: existingStudent?.subjects || activeBatchSubjects,
           lectures: existingStudent?.lectures || INITIAL_BATCH_STUDENTS[0].lectures
         });
       });
@@ -105,7 +161,7 @@ export const ManageStudentsScreen: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [currentBatchCode]);
+  }, [currentBatchCode, activeBatchSubjects]);
 
   // Sync to localStorage
   useEffect(() => {
@@ -127,6 +183,92 @@ export const ManageStudentsScreen: React.FC = () => {
   // Selected student details
   const selectedStudent = useMemo(() => students.find(s => s.id === selectedStudentId), [students, selectedStudentId]);
 
+  // Clean student subject breakdown (purging old CS603 mock codes)
+  const studentSubjectBreakdown = useMemo(() => {
+    if (!selectedStudent || !selectedStudent.subjects) return activeBatchSubjects;
+    const isOldMock = selectedStudent.subjects.some(s => s.subjectCode.startsWith('CS60'));
+    if (isOldMock) return activeBatchSubjects;
+    return selectedStudent.subjects;
+  }, [selectedStudent, activeBatchSubjects]);
+
+  // Group lectures by Date with MULTI-SUBJECT scheduled items per day
+  const groupedLecturesByDate = useMemo(() => {
+    if (!selectedStudent) return [];
+
+    const defaultDates = ['2026-09-18', '2026-09-17', '2026-09-16', '2026-09-15', '2026-09-14'];
+    const studentDates = Array.from(new Set(selectedStudent.lectures.map(l => l.date)));
+    const allDates = Array.from(new Set([...studentDates, ...defaultDates])).sort((a, b) => b.localeCompare(a));
+
+    return allDates.map(dateStr => {
+      let formattedDate = dateStr;
+      let dayName = '';
+      try {
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+          const year = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1;
+          const day = parseInt(parts[2], 10);
+          const d = new Date(year, month, day);
+          formattedDate = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+          dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+        }
+      } catch {
+        // fallback
+      }
+
+      const existingLecs = selectedStudent.lectures.filter(l => l.date === dateStr);
+
+      let dailyLectures: LectureRecord[] = [];
+      if (batchData?.timetable && Array.isArray(batchData.timetable) && dayName) {
+        const dayObj = batchData.timetable.find((item: any) =>
+          item && item.day && item.day.toLowerCase().startsWith(dayName.toLowerCase())
+        );
+
+        if (dayObj && Array.isArray(dayObj.slots) && dayObj.slots.length > 0) {
+          dailyLectures = dayObj.slots.map((slot: any, idx: number) => {
+            const code = slot.code || slot.subjectCode || `BCA-51${idx + 2}`;
+            const name = slot.subject || slot.name || slot.subjectName || 'Class Lecture';
+            const match = existingLecs.find(l => l.subjectCode === code || l.time === slot.time);
+            return {
+              id: match?.id || `lec-${dateStr}-${idx}`,
+              date: dateStr,
+              time: slot.time || '09:00 AM - 10:00 AM',
+              subjectCode: code,
+              subjectName: name,
+              faculty: slot.faculty || 'Faculty Instructor',
+              status: match?.status || (idx % 2 === 0 ? 'Present' : 'Absent'),
+              lastEditedAt: match?.lastEditedAt,
+              lastEditedBy: match?.lastEditedBy,
+              editReason: match?.editReason
+            };
+          });
+        }
+      }
+
+      if (dailyLectures.length === 0) {
+        dailyLectures = existingLecs.length > 0 ? existingLecs : [
+          { id: `lec-${dateStr}-1`, date: dateStr, time: '08:40 AM - 09:40 AM', subjectCode: 'BCA 512', subjectName: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda', status: 'Present' },
+          { id: `lec-${dateStr}-2`, date: dateStr, time: '09:40 AM - 10:40 AM', subjectCode: 'BCA 513', subjectName: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar', status: 'Present' },
+          { id: `lec-${dateStr}-3`, date: dateStr, time: '10:50 AM - 11:50 AM', subjectCode: 'BCA 514', subjectName: 'Software Engineering', faculty: 'Prof. Sunita Sharma', status: 'Present' }
+        ];
+      }
+
+      const presentCount = dailyLectures.filter(l => l.status === 'Present').length;
+      const absentCount = dailyLectures.filter(l => l.status === 'Absent').length;
+      const noClassCount = dailyLectures.filter(l => l.status === 'No Class Conducted').length;
+
+      return {
+        dateStr,
+        formattedDate,
+        dayName,
+        lectures: dailyLectures,
+        presentCount,
+        absentCount,
+        noClassCount
+      };
+    });
+  }, [selectedStudent, batchData]);
+
   // Filtered students list
   const filteredStudents = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -138,12 +280,9 @@ export const ManageStudentsScreen: React.FC = () => {
     );
   }, [students, searchQuery]);
 
-  // Helper: compute overall student attendance percentage
+  // Helper: compute overall student attendance percentage using unified utility
   const calculateOverallPct = useCallback((student: StudentDetail): number => {
-    const totalAttended = student.subjects.reduce((acc, sub) => acc + sub.attended, 0);
-    const totalClasses = student.subjects.reduce((acc, sub) => acc + sub.total, 0);
-    if (totalClasses === 0) return 0;
-    return Math.round((totalAttended / totalClasses) * 1000) / 10;
+    return calculateStudentAttendanceStats(student).overallPercentage;
   }, []);
 
   // Compute batch average percentage
@@ -224,17 +363,22 @@ export const ManageStudentsScreen: React.FC = () => {
         // Recalculate subject attendance count if status changed
         let updatedSubjects = student.subjects;
         if (oldStatus !== newStatus) {
-          const delta = newStatus === 'Present' ? 1 : -1;
-          updatedSubjects = student.subjects.map(sub => {
-            if (sub.subjectCode !== lecture.subjectCode) return sub;
-            const newAttended = Math.max(0, Math.min(sub.total, sub.attended + delta));
-            const newPct = Math.round((newAttended / sub.total) * 1000) / 10;
-            return {
-              ...sub,
-              attended: newAttended,
-              percentage: newPct
-            };
-          });
+          let delta = 0;
+          if (oldStatus === 'Present' && newStatus !== 'Present') delta = -1;
+          if (oldStatus !== 'Present' && newStatus === 'Present') delta = 1;
+
+          if (delta !== 0) {
+            updatedSubjects = student.subjects.map(sub => {
+              if (sub.subjectCode !== lecture.subjectCode) return sub;
+              const newAttended = Math.max(0, Math.min(sub.total, sub.attended + delta));
+              const newPct = Math.round((newAttended / sub.total) * 1000) / 10;
+              return {
+                ...sub,
+                attended: newAttended,
+                percentage: newPct
+              };
+            });
+          }
         }
 
         return {
@@ -556,7 +700,7 @@ export const ManageStudentsScreen: React.FC = () => {
           <div className="stealth-card p-6 space-y-4">
             <h3 className="font-jakarta font-bold text-neutral-900 text-base">Subject Attendance Breakdown</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {selectedStudent.subjects.map((sub) => {
+              {studentSubjectBreakdown.map((sub) => {
                 const isSafe = sub.percentage >= 75.0;
                 return (
                   <div key={sub.subjectCode} className="bg-amber-50/40 border border-amber-100/80 p-4 rounded-2xl space-y-2">
@@ -589,79 +733,148 @@ export const ManageStudentsScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 2: Recorded Lecture History with Edit Action */}
+          {/* Section 2: Date-Grouped Recorded Class Lectures Accordion */}
           <div className="stealth-card p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-jakarta font-bold text-neutral-900 text-base">Recorded Class Lectures</h3>
-                <p className="text-xs text-neutral-500 font-sans">
-                  List of recent class lectures logged for this student. Coordinator can edit status with an audit note.
+                <h3 className="font-jakarta font-bold text-neutral-900 text-base flex items-center space-x-2">
+                  <Calendar className="w-5 h-5 text-[#FF6B4B]" />
+                  <span>Recorded Class Lectures (Date Accordion)</span>
+                </h3>
+                <p className="text-xs text-neutral-500 font-sans mt-0.5">
+                  Class lectures grouped by Date according to active batch timetable. Expand any date row to view or edit lecture attendance status.
                 </p>
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-amber-100 text-neutral-400 text-[10px] font-mono uppercase tracking-wider">
-                    <th className="py-3 px-3">DATE & TIME</th>
-                    <th className="py-3 px-3">SUBJECT</th>
-                    <th className="py-3 px-3">FACULTY</th>
-                    <th className="py-3 px-3 text-center">CURRENT STATUS</th>
-                    <th className="py-3 px-3">LAST EDIT INFO</th>
-                    <th className="py-3 px-3 text-right">ACTION</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-amber-100/60">
-                  {selectedStudent.lectures.map((lec) => (
-                    <tr key={lec.id} className="hover:bg-amber-50/50 transition-colors">
-                      <td className="py-3.5 px-3">
-                        <span className="text-neutral-900 font-bold font-mono tnum block">{lec.date}</span>
-                        <span className="text-[10px] text-neutral-400 font-mono tnum">{lec.time}</span>
-                      </td>
-                      <td className="py-3.5 px-3">
-                        <span className="text-[#FF6B4B] font-bold font-mono block">{lec.subjectCode}</span>
-                        <span className="text-neutral-700 text-[11px] font-sans block">{lec.subjectName}</span>
-                      </td>
-                      <td className="py-3.5 px-3 text-neutral-500">{lec.faculty}</td>
-                      <td className="py-3.5 px-3 text-center">
-                        <span className={`inline-flex items-center space-x-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase font-mono tnum ${
-                          lec.status === 'Present'
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200/60'
-                            : 'bg-rose-100 text-rose-800 border border-rose-200/60'
-                        }`}>
-                          {lec.status === 'Present' ? (
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <XCircle className="w-3 h-3 text-rose-600" />
-                          )}
-                          <span>{lec.status}</span>
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-3 text-[10px] text-neutral-500">
-                        {lec.lastEditedAt ? (
-                          <div>
-                            <span className="text-neutral-800 font-medium block">Edited {lec.lastEditedAt}</span>
-                            <span className="text-neutral-500 italic">"{lec.editReason}"</span>
+            {groupedLecturesByDate.length === 0 ? (
+              <div className="text-center py-10 text-xs text-neutral-400">
+                <FileText className="w-8 h-8 mx-auto text-amber-200 mb-2" />
+                <p className="font-semibold text-neutral-600">No recorded lecture logs found for this student.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {groupedLecturesByDate.map((group) => {
+                  const isExpanded = expandedDates[group.dateStr] === true; // Default closed
+                  return (
+                    <div key={group.dateStr} className="border border-amber-200/80 rounded-2xl overflow-hidden bg-white shadow-xs transition-all">
+                      {/* Accordion Header Bar */}
+                      <button
+                        onClick={() => toggleDateExpanded(group.dateStr)}
+                        className="w-full bg-amber-50/60 hover:bg-amber-100/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left transition-colors"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-9 h-9 rounded-xl bg-orange-100 border border-orange-200 text-[#FF6B4B] flex items-center justify-center font-bold shrink-0">
+                            <Calendar className="w-4 h-4" />
                           </div>
-                        ) : (
-                          <span className="text-neutral-400 italic">Original Record</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-3 text-right">
-                        <button
-                          onClick={() => handleOpenEditModal(selectedStudent.id, lec)}
-                          className="bg-orange-50 hover:bg-orange-100 text-[#FF6B4B] border border-orange-200/60 rounded-full px-3.5 py-1 text-xs font-semibold flex items-center space-x-1 ml-auto transition-colors shadow-sm"
-                        >
-                          <Edit3 className="w-3 h-3 text-[#FF6B4B]" />
-                          <span>Edit</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-jakarta font-bold text-neutral-900 text-sm">{group.formattedDate}</span>
+                              {group.dayName && (
+                                <span className="bg-amber-100 text-amber-900 font-mono text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase">
+                                  {group.dayName}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] font-mono text-neutral-500">
+                              {group.lectures.length} {group.lectures.length === 1 ? 'Lecture Scheduled' : 'Lectures Scheduled'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 shrink-0">
+                          {/* Status summary pills */}
+                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full tnum">
+                            ● {group.presentCount} Present
+                          </span>
+                          {group.absentCount > 0 && (
+                            <span className="bg-rose-100 text-rose-800 border border-rose-200 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full tnum">
+                              ● {group.absentCount} Absent
+                            </span>
+                          )}
+                          {group.noClassCount > 0 && (
+                            <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full tnum">
+                              ● {group.noClassCount} No Class
+                            </span>
+                          )}
+
+                          <div className="w-7 h-7 rounded-full bg-white border border-amber-200 flex items-center justify-center text-neutral-500 shrink-0 ml-2">
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Expanded Content Table */}
+                      {isExpanded && (
+                        <div className="p-4 border-t border-amber-100/80 bg-white">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead>
+                                <tr className="border-b border-amber-100 text-neutral-400 text-[10px] font-mono uppercase tracking-wider">
+                                  <th className="py-2.5 px-3">TIME SLOT</th>
+                                  <th className="py-2.5 px-3">SUBJECT</th>
+                                  <th className="py-2.5 px-3">FACULTY INSTRUCTOR</th>
+                                  <th className="py-2.5 px-3 text-center">STATUS</th>
+                                  <th className="py-2.5 px-3">LAST EDIT INFO</th>
+                                  <th className="py-2.5 px-3 text-right">ACTION</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-amber-100/60">
+                                {group.lectures.map((lec) => (
+                                  <tr key={lec.id} className="hover:bg-amber-50/40 transition-colors">
+                                    <td className="py-3 px-3 font-mono text-neutral-700 font-medium tnum">
+                                      {lec.time}
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      <span className="text-[#FF6B4B] font-bold font-mono block">{lec.subjectCode}</span>
+                                      <span className="text-neutral-800 font-semibold block">{lec.subjectName}</span>
+                                    </td>
+                                    <td className="py-3 px-3 text-neutral-600">{lec.faculty}</td>
+                                    <td className="py-3 px-3 text-center">
+                                      <span className={`inline-flex items-center space-x-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase font-mono tnum ${
+                                        lec.status === 'Present'
+                                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200/60'
+                                          : lec.status === 'Absent'
+                                          ? 'bg-rose-100 text-rose-800 border border-rose-200/60'
+                                          : 'bg-amber-100 text-amber-800 border border-amber-200/60'
+                                      }`}>
+                                        {lec.status === 'Present' && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                                        {lec.status === 'Absent' && <XCircle className="w-3 h-3 text-rose-600" />}
+                                        {lec.status === 'No Class Conducted' && <MinusCircle className="w-3 h-3 text-amber-600" />}
+                                        <span>{lec.status === 'No Class Conducted' ? 'NO CLASS / HOLIDAY' : lec.status}</span>
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-3 text-[10px] text-neutral-500">
+                                      {lec.lastEditedAt ? (
+                                        <div>
+                                          <span className="text-neutral-800 font-medium block">Edited {lec.lastEditedAt}</span>
+                                          <span className="text-neutral-500 italic">"{lec.editReason}"</span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-neutral-400 italic">Original Record</span>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-3 text-right">
+                                      <button
+                                        onClick={() => handleOpenEditModal(selectedStudent.id, lec)}
+                                        className="bg-orange-50 hover:bg-orange-100 text-[#FF6B4B] border border-orange-200/60 rounded-full px-3.5 py-1 text-xs font-semibold flex items-center space-x-1 ml-auto transition-colors shadow-sm"
+                                      >
+                                        <Edit3 className="w-3 h-3 text-[#FF6B4B]" />
+                                        <span>Edit Status</span>
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -704,31 +917,44 @@ export const ManageStudentsScreen: React.FC = () => {
               {/* Status Radio options */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider block">Select Attendance Status *</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setNewStatus('Present')}
-                    className={`py-3 px-3 rounded-xl text-center font-bold flex items-center justify-center space-x-2 transition-all ${
+                    className={`py-2.5 px-2 rounded-xl text-center text-[11px] font-bold flex items-center justify-center space-x-1.5 transition-all ${
                       newStatus === 'Present'
                         ? 'bg-emerald-50 border-2 border-emerald-500 text-emerald-800 shadow-sm'
                         : 'bg-stone-50 border border-stone-200 text-neutral-600 hover:bg-stone-100'
                     }`}
                   >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Present</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setNewStatus('Absent')}
-                    className={`py-3 px-3 rounded-xl text-center font-bold flex items-center justify-center space-x-2 transition-all ${
+                    className={`py-2.5 px-2 rounded-xl text-center text-[11px] font-bold flex items-center justify-center space-x-1.5 transition-all ${
                       newStatus === 'Absent'
                         ? 'bg-rose-50 border-2 border-rose-500 text-rose-800 shadow-sm'
                         : 'bg-stone-50 border border-stone-200 text-neutral-600 hover:bg-stone-100'
                     }`}
                   >
-                    <XCircle className="w-4 h-4 text-rose-600" />
+                    <XCircle className="w-3.5 h-3.5 text-rose-600" />
                     <span>Absent</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewStatus('No Class Conducted')}
+                    className={`py-2.5 px-2 rounded-xl text-center text-[11px] font-bold flex items-center justify-center space-x-1.5 transition-all ${
+                      newStatus === 'No Class Conducted'
+                        ? 'bg-amber-50 border-2 border-amber-500 text-amber-800 shadow-sm'
+                        : 'bg-stone-50 border border-stone-200 text-neutral-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    <MinusCircle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>No Class</span>
                   </button>
                 </div>
               </div>

@@ -232,6 +232,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           setTodayTimetable([]);
         }
+
+        // Dynamically map subjects from batchData if available
+        const rawSubs = data.subjects || (Array.isArray(data.timetable) ? data.timetable.flatMap((d: any) => d.slots || []).filter((s: any) => s.code) : []);
+        if (Array.isArray(rawSubs) && rawSubs.length > 0) {
+          const uniqueMap = new Map<string, any>();
+          rawSubs.forEach((s: any) => {
+            const code = s.code || s.subjectCode;
+            if (code && !uniqueMap.has(code)) {
+              uniqueMap.set(code, s);
+            }
+          });
+          const dynamicSubs: SubjectTelemetry[] = Array.from(uniqueMap.values()).map((s: any, idx: number) => {
+            const code = s.code || s.subjectCode || `SUB-${idx + 1}`;
+            const name = s.name || s.subject || s.subjectName || 'Class Subject';
+            const faculty = s.faculty || 'Faculty Instructor';
+            const attended = 35;
+            const total = 38;
+            const percentage = Number(((attended / total) * 100).toFixed(1));
+            const status = percentage >= 75 ? 'safe' : percentage >= 72 ? 'warning' : 'critical';
+            return {
+              id: code.toLowerCase().replace(/[^a-z0-9]/g, ''),
+              code,
+              name,
+              credits: 4,
+              faculty,
+              attended,
+              total,
+              percentage,
+              complianceThreshold: 75,
+              status,
+              actionableNote: status === 'safe' ? 'Maintaining baseline compliance.' : 'Attendance warning.',
+              bufferHeadroom: Math.max(0, attended - Math.ceil(0.75 * total))
+            };
+          });
+          if (dynamicSubs.length > 0) {
+            setSubjects(dynamicSubs);
+          }
+        }
       } else {
         setBatchData(null);
         setTodayTimetable([]);
