@@ -18,7 +18,8 @@ import {
   AlertCircle,
   Radio,
   Sparkles,
-  Check
+  Check,
+  Clock
 } from 'lucide-react';
 import { db } from '../services/firebase';
 import { doc, setDoc, getDoc, collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
@@ -171,12 +172,66 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
     return () => unsubscribe();
   }, [isTeacher, userRole, teacherDepartment, selectedTeacherBatchCode]);
 
+  // Real-time slot status override map from Firestore daily_schedules
+  const [slotStatusMap, setSlotStatusMap] = useState<Record<string, { status: string; updatedBy?: string; note?: string; eventNote?: string }>>({});
+  const currentDateStr = new Date().toISOString().split('T')[0];
+
+  // System time ticker for current slot calculation
+  const [currentTimeStr, setCurrentTimeStr] = useState<string>(() => new Date().toLocaleTimeString());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTimeStr(new Date().toLocaleTimeString());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Real-time Firestore Daily Schedule Listener for active batch
+  useEffect(() => {
+    const activeCode = selectedTeacherBatchCode || selectedBatch || userProfile?.classCode || 'CS-4051';
+    const scheduleDocRef = doc(db, `batches/${activeCode}/daily_schedules`, currentDateStr);
+
+    const unsubscribe = onSnapshot(scheduleDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setSlotStatusMap(data || {});
+      } else {
+        setSlotStatusMap({});
+      }
+    }, (err) => {
+      console.warn("Firestore daily_schedules listener notice:", err);
+    });
+
+    return () => unsubscribe();
+  }, [selectedTeacherBatchCode, selectedBatch, userProfile?.classCode, currentDateStr]);
+
   // Session Control Actions for Teacher Panel
-  const handleMarkConducted = async (slot: any) => {
-    const activeCode = selectedTeacherBatchCode || activeClassCode || 'CS-4051';
+  const handleMarkConducted = async (targetSlot?: any) => {
+    const slot = targetSlot || activeCurrentSlot || scheduleItems[0] || { id: 'slot-0', subjectName: 'Class Session', subjectCode: 'CS-501' };
+    const activeCode = selectedTeacherBatchCode || selectedBatch || activeClassCode || 'CS-4051';
+    const slotId = slot.id || slot.subjectCode || 'slot-0';
     setIsSubmittingTeacherAction(true);
+
+    // Optimistic local UI update
+    setSlotStatusMap(prev => ({
+      ...prev,
+      [slotId]: { status: 'conducted', updatedBy: userProfile.fullName || 'Faculty Member' }
+    }));
+
     try {
-      // 1. Fetch batch geofence coordinates from Firestore
+      // 1. Write daily schedule slot status to Firestore
+      const scheduleDocRef = doc(db, `batches/${activeCode}/daily_schedules`, currentDateStr);
+      await setDoc(scheduleDocRef, {
+        [slotId]: {
+          status: 'conducted',
+          subjectCode: slot.subjectCode || 'CS-501',
+          subjectName: slot.subjectName || 'Class Session',
+          updatedBy: userProfile.fullName || 'Faculty Member',
+          updatedAt: serverTimestamp()
+        }
+      }, { merge: true });
+
+      // 2. Fetch batch geofence coordinates from Firestore
       const batchDocRef = doc(db, 'batches', activeCode);
       const batchSnap = await getDoc(batchDocRef);
       let geofence = { latitude: 29.193090, longitude: 79.518721, radiusMeters: 50 };
@@ -192,7 +247,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
         }
       }
 
-      // 2. Query batch students from Firestore users collection
+      // 3. Query batch students from Firestore users collection
       const usersRef = collection(db, 'users');
       const qStudents = query(usersRef, where('classCode', '==', activeCode), where('role', '==', 'student'));
       const studentSnap = await getDocs(qStudents);
@@ -245,7 +300,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
         });
       }
 
-      setTeacherToast(`✓ Class Conducted! Student GPS verified against campus geofence (${presentCount}/${totalCount} Present).`);
+      setTeacherToast(`✓ Class Conducted! Student GPS verified (${presentCount}/${totalCount} Present). Slot status synced to Today's Schedule.`);
       setTimeout(() => setTeacherToast(null), 5000);
     } catch (err: any) {
       console.error("Error marking class conducted:", err);
@@ -256,10 +311,30 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
     }
   };
 
-  const handleMarkCancelled = async (slot: any) => {
-    const activeCode = selectedTeacherBatchCode || activeClassCode || 'CS-4051';
+  const handleMarkCancelled = async (targetSlot?: any) => {
+    const slot = targetSlot || activeCurrentSlot || scheduleItems[0] || { id: 'slot-0', subjectName: 'Class Session', subjectCode: 'CS-501' };
+    const activeCode = selectedTeacherBatchCode || selectedBatch || activeClassCode || 'CS-4051';
+    const slotId = slot.id || slot.subjectCode || 'slot-0';
     setIsSubmittingTeacherAction(true);
+
+    // Optimistic local UI update
+    setSlotStatusMap(prev => ({
+      ...prev,
+      [slotId]: { status: 'cancelled', updatedBy: userProfile.fullName || 'Faculty Member' }
+    }));
+
     try {
+      const scheduleDocRef = doc(db, `batches/${activeCode}/daily_schedules`, currentDateStr);
+      await setDoc(scheduleDocRef, {
+        [slotId]: {
+          status: 'cancelled',
+          subjectCode: slot.subjectCode || 'CS-501',
+          subjectName: slot.subjectName || 'Class Session',
+          updatedBy: userProfile.fullName || 'Faculty Member',
+          updatedAt: serverTimestamp()
+        }
+      }, { merge: true });
+
       const logsRef = collection(db, `batches/${activeCode}/attendanceLogs`);
       await addDoc(logsRef, {
         classCode: activeCode,
@@ -272,7 +347,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
         timestamp: serverTimestamp()
       });
 
-      setTeacherToast('✓ Lecture slot marked as CANCELLED. Student attendance preserved without absentees.');
+      setTeacherToast('✓ Lecture slot marked as CANCELLED. Today\'s Schedule updated to 🔴 Cancelled.');
       setTimeout(() => setTeacherToast(null), 5000);
     } catch (err: any) {
       console.error("Error marking class cancelled:", err);
@@ -283,11 +358,33 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
     }
   };
 
-  const handleMarkSpecialEvent = async (slot: any) => {
-    const activeCode = selectedTeacherBatchCode || activeClassCode || 'CS-4051';
+  const handleMarkSpecialEvent = async (targetSlot?: any) => {
+    const slot = targetSlot || activeCurrentSlot || scheduleItems[0] || { id: 'slot-0', subjectName: 'Class Session', subjectCode: 'CS-501' };
+    const activeCode = selectedTeacherBatchCode || selectedBatch || activeClassCode || 'CS-4051';
+    const slotId = slot.id || slot.subjectCode || 'slot-0';
+
+    const customNote = window.prompt("Enter Special Event / Workshop Details:", "Department Tech Workshop / Guest Session");
     setIsSubmittingTeacherAction(true);
+
+    // Optimistic local UI update
+    setSlotStatusMap(prev => ({
+      ...prev,
+      [slotId]: { status: 'event', note: customNote || 'Department Workshop', updatedBy: userProfile.fullName || 'Faculty Member' }
+    }));
+
     try {
-      const customNote = window.prompt("Enter Special Event / Workshop Details:", "Department Tech Workshop / Guest Session");
+      const scheduleDocRef = doc(db, `batches/${activeCode}/daily_schedules`, currentDateStr);
+      await setDoc(scheduleDocRef, {
+        [slotId]: {
+          status: 'event',
+          subjectCode: slot.subjectCode || 'CS-501',
+          subjectName: slot.subjectName || 'Class Session',
+          eventNote: customNote || 'Department Workshop / Holiday',
+          updatedBy: userProfile.fullName || 'Faculty Member',
+          updatedAt: serverTimestamp()
+        }
+      }, { merge: true });
+
       const logsRef = collection(db, `batches/${activeCode}/attendanceLogs`);
       await addDoc(logsRef, {
         classCode: activeCode,
@@ -300,7 +397,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
         timestamp: serverTimestamp()
       });
 
-      setTeacherToast(`✓ Special Event logged: "${customNote || 'Department Workshop'}".`);
+      setTeacherToast(`✓ Special Event logged: "${customNote || 'Department Workshop'}". Today\'s Schedule updated to 🟡 Special Event.`);
       setTimeout(() => setTeacherToast(null), 5000);
     } catch (err: any) {
       console.error("Error logging special event:", err);
@@ -405,23 +502,78 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   const currentDayCode = daysOfWeek[new Date().getDay()];
   const currentDayFull = fullDays[currentDayCode] || 'Today';
 
-  // Compute active schedule sequence dynamically from Firestore todayTimetable
+  // Compute active schedule sequence dynamically from Firestore todayTimetable & slotStatusMap
   const scheduleItems = useMemo(() => {
     if (!todayTimetable || !Array.isArray(todayTimetable) || todayTimetable.length === 0) {
       return [];
     }
-    return todayTimetable.map((slot: any, idx: number) => ({
-      id: slot.id || `slot-${idx}`,
-      time: slot.time || '09:00 AM - 10:00 AM',
-      room: slot.room || slot.location || 'LH-302',
-      subjectCode: slot.code || slot.subjectCode || 'BCA-512',
-      subjectName: slot.subject || slot.name || slot.subjectName || 'Class Session',
-      faculty: slot.faculty || 'Faculty Instructor',
-      status: slot.status || (idx === 0 ? 'conducted_gps' : 'upcoming'),
-      statusText: slot.statusText || 'Parsed Batch Routine',
-      subText: slot.subText || ''
-    }));
-  }, [todayTimetable]);
+    return todayTimetable.map((slot: any, idx: number) => {
+      const slotId = slot.id || `slot-${idx}`;
+      const codeKey = slot.code || slot.subjectCode || '';
+      const override = slotStatusMap[slotId] || slotStatusMap[codeKey];
+
+      const computedStatus = override?.status || slot.status || (idx === 0 ? 'conducted_gps' : 'upcoming');
+
+      return {
+        id: slotId,
+        time: slot.time || '09:00 AM - 10:00 AM',
+        room: slot.room || slot.location || 'LH-302',
+        subjectCode: codeKey || 'BCA-512',
+        subjectName: slot.subject || slot.name || slot.subjectName || 'Class Session',
+        faculty: slot.faculty || 'Faculty Instructor',
+        status: computedStatus,
+        statusText: override ? `Updated by ${override.updatedBy || 'Faculty'}` : slot.statusText || 'Parsed Batch Routine',
+        subText: override?.eventNote || override?.note || slot.subText || ''
+      };
+    });
+  }, [todayTimetable, slotStatusMap]);
+
+  // Time parsing helper for slot matching
+  const parseSlotTimes = (timeStr: string) => {
+    if (!timeStr) return null;
+    const parts = timeStr.split('-').map(s => s.trim());
+    if (parts.length < 2) return null;
+
+    const parseTime = (str: string) => {
+      const match = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+      if (!match) return null;
+      let hrs = parseInt(match[1], 10);
+      const mins = parseInt(match[2], 10);
+      const period = match[3]?.toUpperCase();
+      if (period === 'PM' && hrs < 12) hrs += 12;
+      if (period === 'AM' && hrs === 12) hrs = 0;
+      return hrs * 60 + mins;
+    };
+
+    const startMins = parseTime(parts[0]);
+    const endMins = parseTime(parts[1]);
+    if (startMins === null || endMins === null) return null;
+    return { startMins, endMins };
+  };
+
+  const isExactCurrentTimeMatch = useMemo(() => {
+    if (!scheduleItems || scheduleItems.length === 0) return false;
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    return scheduleItems.some(item => {
+      const range = parseSlotTimes(item.time);
+      return range ? (currentMins >= range.startMins && currentMins <= range.endMins) : false;
+    });
+  }, [scheduleItems, currentTimeStr]);
+
+  const activeCurrentSlot = useMemo(() => {
+    if (!scheduleItems || scheduleItems.length === 0) return null;
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+
+    for (const item of scheduleItems) {
+      const range = parseSlotTimes(item.time);
+      if (range && currentMins >= range.startMins && currentMins <= range.endMins) {
+        return item;
+      }
+    }
+    return scheduleItems[0];
+  }, [scheduleItems, currentTimeStr]);
 
   // Dynamic overall attendance math
   const { totalAttendedAll, totalClassesAll, overallPercentage, totalBufferHeadroom } = useMemo(() => {
@@ -633,22 +785,67 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
               {/* Class Session Control Triggers */}
               <div className="bg-white border border-amber-200/80 p-6 rounded-3xl space-y-5 shadow-xs">
-                <div className="space-y-1">
-                  <span className="text-[11px] font-mono font-bold text-purple-800 uppercase tracking-wider bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
-                    Active Lecture Session Controls
-                  </span>
-                  <h3 className="text-xl font-jakarta font-bold text-neutral-900 mt-1">
-                    Execute Class Action Trigger for Current Slot
-                  </h3>
-                  <p className="text-xs text-neutral-600 font-sans">
-                    Select an action below to update live batch attendance records in Firestore.
-                  </p>
+                {/* Header Row with Top-Right Highlight Badge */}
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-purple-100">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[11px] font-mono font-bold text-purple-800 uppercase tracking-wider bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                        Active Lecture Session Controls
+                      </span>
+                      {isExactCurrentTimeMatch && (
+                        <span className="inline-flex items-center space-x-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>LIVE SLOT MATCH</span>
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-xl font-jakarta font-bold text-neutral-900 mt-1">
+                      Execute Class Action Trigger for Current Slot
+                    </h3>
+                    <p className="text-xs text-neutral-600 font-sans">
+                      Select an action below to update live batch attendance records in Firestore.
+                    </p>
+                  </div>
+
+                  {/* TOP-RIGHT HIGHLIGHT BADGE FOR CURRENT TIME SLOT & SUBJECT */}
+                  <div className="shrink-0 w-full md:w-auto">
+                    {isExactCurrentTimeMatch && activeCurrentSlot ? (
+                      <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-300 p-3.5 rounded-2xl space-y-1.5 shadow-sm">
+                        <div className="flex items-center justify-between gap-3 text-xs font-mono">
+                          <span className="font-bold text-purple-900 bg-purple-200/70 px-2 py-0.5 rounded-md flex items-center space-x-1">
+                            <Clock className="w-3.5 h-3.5 text-purple-700 inline mr-1" />
+                            <span>{activeCurrentSlot.time}</span>
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                            📍 {activeCurrentSlot.room}
+                          </span>
+                        </div>
+                        <div className="font-jakarta font-bold text-neutral-900 text-sm truncate max-w-[260px]">
+                          {activeCurrentSlot.subjectName} <span className="text-xs font-mono text-purple-700">({activeCurrentSlot.subjectCode})</span>
+                        </div>
+                        <div className="text-[10px] font-mono text-neutral-500 flex items-center justify-between">
+                          <span>Instructor: {activeCurrentSlot.faculty}</span>
+                          <span className="text-purple-600 font-bold">Active Slot</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50/80 border border-amber-200 p-3 rounded-2xl space-y-1 shadow-xs text-center md:text-right">
+                        <div className="inline-flex items-center space-x-1.5 text-amber-900 text-xs font-mono font-bold uppercase bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
+                          <Clock className="w-3.5 h-3.5 text-amber-700" />
+                          <span>OFF-PEAK / NO ACTIVE LECTURE</span>
+                        </div>
+                        <p className="text-[11px] font-mono text-neutral-600">
+                          {activeCurrentSlot ? `Default Slot: ${activeCurrentSlot.subjectName} (${activeCurrentSlot.subjectCode})` : 'No timetable slots scheduled'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Button 1: CLASS CONDUCTED */}
                   <button
-                    onClick={() => handleMarkConducted(scheduleItems[0] || { subjectName: 'Class Lecture', subjectCode: 'CS-501' })}
+                    onClick={() => handleMarkConducted(activeCurrentSlot || scheduleItems[0])}
                     disabled={isSubmittingTeacherAction}
                     className="p-5 bg-emerald-50 hover:bg-emerald-100/80 border-2 border-emerald-300 text-emerald-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
                   >
@@ -665,7 +862,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
                   {/* Button 2: NO CLASS / CANCELLED */}
                   <button
-                    onClick={() => handleMarkCancelled(scheduleItems[0] || { subjectName: 'Class Lecture', subjectCode: 'CS-501' })}
+                    onClick={() => handleMarkCancelled(activeCurrentSlot || scheduleItems[0])}
                     disabled={isSubmittingTeacherAction}
                     className="p-5 bg-rose-50 hover:bg-rose-100/80 border-2 border-rose-300 text-rose-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
                   >
@@ -682,7 +879,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
                   {/* Button 3: SPECIAL EVENT / WORKSHOP */}
                   <button
-                    onClick={() => handleMarkSpecialEvent(scheduleItems[0] || { subjectName: 'Class Lecture', subjectCode: 'CS-501' })}
+                    onClick={() => handleMarkSpecialEvent(activeCurrentSlot || scheduleItems[0])}
                     disabled={isSubmittingTeacherAction}
                     className="p-5 bg-amber-50 hover:bg-amber-100/80 border-2 border-amber-300 text-amber-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
                   >
@@ -927,12 +1124,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                       <span className={`text-xs font-mono px-3 py-1 rounded-full font-bold border ${
                         item.status === 'conducted_gps' || item.status === 'conducted'
                           ? 'bg-emerald-100 border-emerald-200 text-emerald-800'
+                          : item.status === 'cancelled' || item.status === 'cancelled_slot'
+                          ? 'bg-rose-100 border-rose-200 text-rose-800'
+                          : item.status === 'event' || item.status === 'special_event'
+                          ? 'bg-amber-100 border-amber-200 text-amber-800'
                           : item.status === 'awaiting_check'
                           ? 'bg-amber-100 border-amber-200 text-amber-800'
                           : 'bg-indigo-50 border-indigo-200 text-indigo-700'
                       }`}>
                         {item.status === 'conducted_gps' || item.status === 'conducted' 
-                          ? 'Conducted' 
+                          ? '🟢 Conducted' 
+                          : item.status === 'cancelled' || item.status === 'cancelled_slot'
+                          ? '🔴 Cancelled'
+                          : item.status === 'event' || item.status === 'special_event'
+                          ? '🟡 Special Event'
                           : item.status === 'awaiting_check' 
                           ? 'Awaiting Check' 
                           : 'Upcoming'}
