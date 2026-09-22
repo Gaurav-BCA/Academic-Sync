@@ -24,29 +24,28 @@ const PATH_TO_TAB: Record<string, ScreenTab> = {
   '/manage':     'manage',
 };
 
-interface HeaderNavProps {
-  onOpenVotingModal: () => void;
-}
+interface HeaderNavProps {}
 
-export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
+export const HeaderNav: React.FC<HeaderNavProps> = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { userRole, userProfile, resetOnboarding } = useApp();
-  const { isOnboarded, studentProfile, coordinatorProfile, resetOnboarding: resetOnboardingContext } = useOnboarding();
+  const { isOnboarded, studentProfile, coordinatorProfile, teacherProfile, resetOnboarding: resetOnboardingContext } = useOnboarding();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const activeTab: ScreenTab = PATH_TO_TAB[location.pathname] ?? 'dashboard';
   const isCoordinator = userRole === 'coordinator';
+  const isTeacher = userRole === 'teacher';
 
   // Dynamic user profile name resolution
-  const activeName = (isCoordinator ? coordinatorProfile?.fullName : studentProfile?.fullName) || userProfile.fullName || 'User';
-  const activeClassCode = userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-8849';
+  const activeName = (isTeacher ? (teacherProfile?.fullName || userProfile.fullName) : isCoordinator ? coordinatorProfile?.fullName : studentProfile?.fullName) || userProfile.fullName || 'User';
+  const activeClassCode = userProfile.classCode || (isTeacher ? (userProfile.department ? `DEPT: ${userProfile.department}` : 'TEACHER') : isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-8849';
 
   // Strict Role-Based Navigation items
-  const navItems: { id: ScreenTab; label: string }[] = isCoordinator
+  const navItems: { id: ScreenTab; label: string }[] = (isTeacher || isCoordinator)
     ? [
-        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'dashboard', label: isTeacher ? 'Teacher Panel' : 'Dashboard' },
         { id: 'manage',    label: 'Manage Students' },
       ]
     : [
@@ -79,7 +78,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
               <Activity className="w-4 h-4" />
             </div>
             <span className="font-jakarta font-bold text-neutral-900 text-base tracking-tight">Academic-Sync</span>
-            <span className="hidden sm:inline text-[11px] font-mono font-semibold text-amber-900/70 bg-amber-100/60 border border-amber-200 px-2.5 py-0.5 rounded-full tnum">
+            <span className="hidden sm:inline text-[11px] font-mono font-semibold text-amber-900/70 bg-amber-100/60 border border-amber-200 px-2.5 py-0.5 rounded-full tnum uppercase">
               {activeClassCode}
             </span>
           </div>
@@ -101,34 +100,21 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({ onOpenVotingModal }) => {
             ))}
           </nav>
 
-          {/* Right: Locked Role Badge + GPS Pill + Profile Avatar Dropdown */}
+          {/* Right: Locked Role Badge + Profile Avatar Dropdown */}
           <div className="flex items-center space-x-2.5 shrink-0">
             {/* Session Locked Role Badge */}
             <div
-              title={`Role locked to current session: ${isCoordinator ? 'Class Coordinator' : 'Student'}`}
+              title={`Role locked to current session: ${isTeacher ? 'Faculty Member' : isCoordinator ? 'Class Coordinator' : 'Student'}`}
               className={`px-3.5 py-1 rounded-full text-[11px] font-mono font-bold uppercase transition-all flex items-center space-x-1 border shadow-xs ${
-                isCoordinator 
-                  ? 'bg-purple-100/80 text-purple-800 border-purple-200' 
-                  : 'bg-indigo-100/80 text-indigo-800 border-indigo-200'
+                isTeacher
+                  ? 'bg-purple-100/80 text-purple-900 border-purple-300'
+                  : isCoordinator 
+                  ? 'bg-indigo-100/80 text-indigo-800 border-indigo-200' 
+                  : 'bg-emerald-100/80 text-emerald-800 border-emerald-200'
               }`}
             >
-              <span>ROLE: {isCoordinator ? 'COORDINATOR' : 'STUDENT'}</span>
+              <span>ROLE: {isTeacher ? 'TEACHER' : isCoordinator ? 'COORDINATOR' : 'STUDENT'}</span>
             </div>
-
-            {/* Minimal GPS / check-in trigger — green pulse pill (ONLY FOR STUDENTS) */}
-            {!isCoordinator && (
-              <button
-                onClick={onOpenVotingModal}
-                title="Open Live Check-In"
-                className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-700 hover:bg-emerald-100/80 transition-colors"
-              >
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </span>
-                <span className="text-[11px] font-mono font-bold hidden sm:inline">GPS</span>
-              </button>
-            )}
 
             {/* Profile Avatar with Interactive Dropdown Menu */}
             <div className="relative">

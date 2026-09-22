@@ -17,7 +17,9 @@ import {
   FileImage,
   CheckCircle2,
   LogIn,
-  UserPlus
+  UserPlus,
+  Award,
+  Building
 } from 'lucide-react';
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
@@ -34,11 +36,12 @@ export const OverviewGateScreen: React.FC = () => {
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // Tab switcher state ('student' by default)
-  const [activeTab, setActiveTab] = useState<'student' | 'coordinator'>('student');
+  const [activeTab, setActiveTab] = useState<'student' | 'coordinator' | 'teacher'>('student');
 
   // Dynamic Toggle Mode state (false = Sign Up, true = Sign In)
   const [isStudentSignIn, setIsStudentSignIn] = useState(false);
   const [isCoordSignIn, setIsCoordSignIn] = useState(false);
+  const [isTeacherSignIn, setIsTeacherSignIn] = useState(false);
 
   // Student state & password visibility toggle
   const [studentEmail, setStudentEmail] = useState('');
@@ -58,6 +61,14 @@ export const OverviewGateScreen: React.FC = () => {
   const [institution, setInstitution] = useState('Apex Inst. of Tech');
   const [branch, setBranch] = useState('Computer Science & Eng');
   const [semester, setSemester] = useState('Sem VI');
+
+  // Teacher Hub state & password visibility toggle
+  const [teacherEmail, setTeacherEmail] = useState('');
+  const [teacherPassword, setTeacherPassword] = useState('');
+  const [showTeacherPassword, setShowTeacherPassword] = useState(false);
+  const [teacherName, setTeacherName] = useState('');
+  const [teacherDepartment, setTeacherDepartment] = useState('BCA');
+  const [isTeacherLoading, setIsTeacherLoading] = useState(false);
   
   // Real Gemini AI Timetable OCR parsing state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -424,6 +435,130 @@ export const OverviewGateScreen: React.FC = () => {
   const isCoordSignUpValid = coordEmail.trim() !== '' && coordPassword.trim() !== '' && coordinatorName.trim() !== '';
   const isCoordSignInValid = coordEmail.trim() !== '' && coordPassword.trim() !== '';
 
+  const handleTeacherSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!teacherEmail.trim()) {
+      showToast('error', 'Please enter your Email Address.');
+      return;
+    }
+    if (!teacherPassword.trim()) {
+      showToast('error', 'Please enter your Password.');
+      return;
+    }
+    if (!teacherDepartment.trim()) {
+      showToast('error', 'Please enter your Department Name (e.g. BCA, CSE).');
+      return;
+    }
+
+    setIsTeacherLoading(true);
+    const upperDept = teacherDepartment.trim().toUpperCase();
+
+    if (isTeacherSignIn) {
+      // ── SIGN IN MODE ──
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, teacherEmail.trim(), teacherPassword.trim());
+        const uid = userCred.user.uid;
+
+        const userSnap = await getDoc(doc(db, 'users', uid));
+        let tName = '';
+        let tDept = upperDept;
+        let tRole = 'teacher';
+
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          tName = data.name || data.fullName || '';
+          tDept = upperDept;
+          if (data.role === 'coordinator') {
+            tRole = 'coordinator';
+          }
+        }
+
+        if (!tName) {
+          tName = userCred.user.displayName?.trim() || deriveNameFromEmail(teacherEmail.trim(), 'Faculty Member');
+        }
+
+        // Persist/update user department in Firestore
+        await setDoc(doc(db, 'users', uid), {
+          uid,
+          name: tName,
+          email: teacherEmail.trim(),
+          department: upperDept,
+          role: tRole,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+
+        showToast('success', `Welcome back, ${tName}! Teacher portal authenticated (${upperDept}).`);
+        completeOnboarding(tRole as any, {
+          uid,
+          email: teacherEmail.trim(),
+          fullName: tName,
+          department: tDept,
+          classCode: 'CS-8849'
+        });
+
+        setTimeout(() => navigate('/dashboard'), 800);
+      } catch (err: any) {
+        console.error('Teacher sign-in error:', err);
+        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+          showToast('error', 'Wrong Password. Please verify your credentials and try again.');
+        } else if (err.code === 'auth/user-not-found') {
+          showToast('error', 'No teacher account found. Switch to Sign Up mode to register.', 'Account Not Found');
+        } else {
+          showToast('error', err.message || 'Failed to sign in.');
+        }
+      } finally {
+        setIsTeacherLoading(false);
+      }
+    } else {
+      // ── SIGN UP MODE ──
+      if (!teacherName.trim()) {
+        showToast('error', 'Please enter Teacher Full Name.');
+        setIsTeacherLoading(false);
+        return;
+      }
+      if (!teacherDepartment.trim()) {
+        showToast('error', 'Please enter Department Name (e.g. BCA, CSE).');
+        setIsTeacherLoading(false);
+        return;
+      }
+
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, teacherEmail.trim(), teacherPassword.trim());
+        const uid = userCred.user.uid;
+
+        await setDoc(doc(db, 'users', uid), {
+          uid,
+          name: teacherName.trim(),
+          email: teacherEmail.trim(),
+          department: upperDept,
+          role: 'teacher',
+          createdAt: serverTimestamp()
+        }, { merge: true });
+
+        showToast('success', `Faculty registered! Department: ${upperDept}`, 'Registration Complete');
+        completeOnboarding('teacher', {
+          uid,
+          email: teacherEmail.trim(),
+          fullName: teacherName.trim(),
+          department: upperDept
+        });
+
+        setTimeout(() => navigate('/dashboard'), 800);
+      } catch (err: any) {
+        console.error('Teacher sign-up error:', err);
+        if (err.code === 'auth/email-already-in-use') {
+          showToast('info', 'An account already exists for this email. Switched to Sign In mode.');
+          setIsTeacherSignIn(true);
+        } else {
+          showToast('error', err.message || 'Failed to register teacher account.');
+        }
+      } finally {
+        setIsTeacherLoading(false);
+      }
+    }
+  };
+
   return (
     <div className="space-y-8 py-6 max-w-4xl mx-auto">
       {/* Toast alert component */}
@@ -458,11 +593,11 @@ export const OverviewGateScreen: React.FC = () => {
 
       {/* Centered Sleek Tab Switcher Pill */}
       <div className="flex justify-center">
-        <div className="bg-white border border-amber-200/70 p-1.5 rounded-full inline-flex items-center space-x-2 shadow-sm">
+        <div className="bg-white border border-amber-200/70 p-1.5 rounded-full inline-flex items-center space-x-2 shadow-sm flex-wrap justify-center">
           <button
             type="button"
             onClick={() => setActiveTab('student')}
-            className={`px-6 py-2.5 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'student'
+            className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'student'
                 ? 'bg-[#FF6B4B] text-white shadow-md shadow-orange-500/25'
                 : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
               }`}
@@ -474,13 +609,25 @@ export const OverviewGateScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('coordinator')}
-            className={`px-6 py-2.5 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'coordinator'
+            className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'coordinator'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25'
                 : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
               }`}
           >
             <BookOpen className="w-4 h-4" />
-            <span>Class Coordinator Hub</span>
+            <span>Coordinator Hub</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('teacher')}
+            className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'teacher'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
+                : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
+              }`}
+          >
+            <Award className="w-4 h-4" />
+            <span>Teacher Hub</span>
           </button>
         </div>
       </div>
@@ -704,7 +851,7 @@ export const OverviewGateScreen: React.FC = () => {
               )}
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'coordinator' ? (
           /* Class Coordinator Setup Card */
           <div className="stealth-card p-8 sm:p-10 md:p-12 flex flex-col justify-between animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
             <form onSubmit={handleCoordSubmit} className="space-y-6">
@@ -935,6 +1082,176 @@ export const OverviewGateScreen: React.FC = () => {
                     type="button"
                     onClick={() => setIsCoordSignIn(true)}
                     className="text-[#FF6B4B] hover:underline font-bold transition-colors ml-1"
+                  >
+                    Sign In
+                  </button>
+                </span>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Teacher Hub Card */
+          <div className="stealth-card p-8 sm:p-10 md:p-12 flex flex-col justify-between animate-fade-in border border-amber-100 shadow-xl shadow-amber-900/5">
+            <form onSubmit={handleTeacherSubmit} className="space-y-6">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center space-x-2 text-purple-600">
+                  <Award className="w-5 h-5" />
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-100">
+                    {isTeacherSignIn ? 'Teacher Sign In' : 'Register Faculty Member'}
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-neutral-400 uppercase font-semibold">
+                  {isTeacherSignIn ? 'Sign In Mode' : 'Faculty Sign Up'}
+                </span>
+              </div>
+
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-jakarta font-bold text-neutral-900">
+                  {isTeacherSignIn ? 'Teacher Portal Sign In' : 'Teacher Hub Setup'}
+                </h2>
+                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed mt-1.5">
+                  {isTeacherSignIn
+                    ? 'Enter your credentials to access your department batches and trigger active class sessions.'
+                    : 'Register as a Faculty Member under your department (e.g. BCA, CSE) to manage batch sessions.'}
+                </p>
+              </div>
+
+              {/* Input Fields Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                {/* Email Address */}
+                <div className="space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                    Email Address <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="email"
+                      required
+                      value={teacherEmail}
+                      onChange={(e) => setTeacherEmail(e.target.value)}
+                      placeholder="teacher@institution.edu"
+                      className="input-stealth w-full pl-11 pr-4 py-3.5 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                    />
+                  </div>
+                </div>
+
+                {/* Password with Eye Toggle */}
+                <div className="space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                    Password <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showTeacherPassword ? 'text' : 'password'}
+                      required
+                      value={teacherPassword}
+                      onChange={(e) => setTeacherPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="input-stealth w-full pl-11 pr-11 py-3.5 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTeacherPassword(prev => !prev)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors z-10 p-1 rounded-md focus:outline-none"
+                    >
+                      {showTeacherPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Department Name (AUTO UPPERCASE) */}
+                <div className="space-y-1.5 sm:col-span-1">
+                  <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                    Department Name (UPPERCASE) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                      <Building className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={teacherDepartment}
+                      onChange={(e) => setTeacherDepartment(e.target.value.toUpperCase())}
+                      placeholder="e.g. BCA, CSE, CS"
+                      className="input-stealth w-full pl-11 pr-4 py-3.5 font-mono text-sm uppercase tracking-wider font-bold placeholder:text-neutral-400 text-neutral-900"
+                    />
+                  </div>
+                </div>
+
+                {/* SIGN-UP MODE ADDITIONAL FIELDS */}
+                {!isTeacherSignIn && (
+                  /* Full Name */
+                  <div className="space-y-1.5 sm:col-span-1">
+                    <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                      Full Name <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={teacherName}
+                        onChange={(e) => setTeacherName(e.target.value)}
+                        placeholder="e.g. Dr. A. K. Verma"
+                        className="input-stealth w-full pl-11 pr-4 py-3.5 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Primary Action Button */}
+              <div className="mt-6 space-y-3.5">
+                <button
+                  type="submit"
+                  disabled={isTeacherLoading || !teacherEmail.trim() || !teacherPassword.trim() || !teacherDepartment.trim() || (!isTeacherSignIn && !teacherName.trim())}
+                  className="btn-primary w-full py-4 flex items-center justify-center space-x-2 text-xs uppercase tracking-wider font-bold shadow-md shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isTeacherLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isTeacherSignIn ? (
+                    <LogIn className="w-4 h-4" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
+                  <span>
+                    {isTeacherLoading
+                      ? isTeacherSignIn ? 'SIGNING IN...' : 'REGISTERING FACULTY ACCOUNT...'
+                      : isTeacherSignIn ? 'SIGN IN TO TEACHER DASHBOARD' : 'REGISTER TEACHER ACCOUNT'}
+                  </span>
+                </button>
+              </div>
+            </form>
+
+            {/* Mode Toggle Link */}
+            <div className="pt-5 mt-6 border-t border-amber-100/80 text-xs text-neutral-600 font-sans text-center">
+              {isTeacherSignIn ? (
+                <span>
+                  New Teacher?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsTeacherSignIn(false)}
+                    className="text-purple-600 hover:underline font-bold transition-colors ml-1"
+                  >
+                    Register as Faculty Member (Sign Up)
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  Already registered as Teacher/Coordinator?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsTeacherSignIn(true)}
+                    className="text-purple-600 hover:underline font-bold transition-colors ml-1"
                   >
                     Sign In
                   </button>

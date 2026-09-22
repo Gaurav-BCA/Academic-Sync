@@ -33,7 +33,7 @@ export interface TodaySequenceItem {
   subjectCode: string;
   subjectName: string;
   faculty: string;
-  status: 'conducted_gps' | 'conducted_consensus' | 'awaiting_check' | 'scheduled' | 'exempted';
+  status: 'conducted_gps' | 'conducted' | 'awaiting_check' | 'scheduled' | 'exempted';
   statusText: string;
   subText?: string;
 }

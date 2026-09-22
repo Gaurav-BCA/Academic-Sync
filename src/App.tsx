@@ -4,9 +4,8 @@ import { HeaderNav } from './components/HeaderNav';
 import { Footer } from './components/Footer';
 import { OverviewGateScreen } from './screens/OverviewGateScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
-import { SmartCheckModal } from './components/modals/SmartCheckModal';
 import { OnboardingProvider, useOnboarding } from './context/OnboardingContext';
-import { AppProvider, useApp } from './context/AppContext';
+import { AppProvider } from './context/AppContext';
 import { ProtectedRoute, OnboardingRoute, StudentRoute, CoordinatorRoute } from './components/ProtectedRoute';
 
 // Lazy loaded secondary route components for bundle optimization
@@ -27,7 +26,6 @@ function RouteLoadingFallback() {
 
 function AppShell() {
   const { isOnboarded } = useOnboarding();
-  const { isCheckInModalOpen, openCheckInModal, closeCheckInModal } = useApp();
 
   return (
     <div className="min-h-screen bg-[#FFF9F2] text-neutral-900 flex flex-col justify-between selection:bg-[#FF6B4B] selection:text-white relative overflow-hidden">
@@ -38,7 +36,7 @@ function AppShell() {
 
       {/* Top sticky navigation — only visible after onboarding is complete */}
       {isOnboarded && (
-        <HeaderNav onOpenVotingModal={openCheckInModal} />
+        <HeaderNav />
       )}
 
       {/* Main container */}
@@ -62,7 +60,7 @@ function AppShell() {
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <DashboardScreen onOpenVotingModal={openCheckInModal} />
+                  <DashboardScreen />
                 </ProtectedRoute>
               }
             />
@@ -112,12 +110,6 @@ function AppShell() {
           </Routes>
         </Suspense>
       </main>
-
-      {/* Geofenced Smart Check Modal Overlay */}
-      <SmartCheckModal
-        isOpen={isCheckInModalOpen}
-        onClose={closeCheckInModal}
-      />
 
       {/* Footer */}
       <Footer />
