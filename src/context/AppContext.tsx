@@ -36,6 +36,8 @@ interface AppContextValue {
   resetOnboarding: () => void;
   
   // Firestore Live Batch & Timetable State
+  selectedBatch: string;
+  setSelectedBatch: (batchCode: string) => void;
   batchData: any;
   todayTimetable: any[];
   loadingBatchData: boolean;
@@ -99,6 +101,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
+  // Global Selected Batch State for cross-component synchronization
+  const [selectedBatch, setSelectedBatchState] = useState<string>(() => {
+    try {
+      const storedProfile = localStorage.getItem(LS_KEY_PROFILE);
+      if (storedProfile) {
+        const parsed = JSON.parse(storedProfile);
+        if (parsed.classCode) return parsed.classCode;
+      }
+    } catch {}
+    return 'CS-4051';
+  });
+
+  const setSelectedBatch = useCallback((batchCode: string) => {
+    if (!batchCode) return;
+    setSelectedBatchState(batchCode);
+    setUserProfileState(prev => {
+      const updated = { ...prev, classCode: batchCode };
+      try {
+        localStorage.setItem(LS_KEY_PROFILE, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
   // Sync state dynamically with Firebase Auth & Firestore user records
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -110,11 +136,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (userDocSnap.exists()) {
             const data = userDocSnap.data();
             const role: UserRole = data.role === 'teacher' ? 'teacher' : data.role === 'coordinator' ? 'coordinator' : 'student';
+            const profileClassCode = data.classCode || (role === 'teacher' ? 'CS-4051' : 'CS-8849');
             const profile: UserProfile = {
               uid: user.uid,
               fullName: data.name || data.fullName || user.displayName || 'User',
               rollNumber: data.rollNumber || (role === 'coordinator' ? 'COORDINATOR' : role === 'teacher' ? 'FACULTY' : '21CS045'),
-              classCode: data.classCode || 'CS-8849',
+              classCode: profileClassCode,
               email: user.email || data.email || '',
               institution: data.institution || 'Apex Inst. of Tech',
               branch: data.branch || 'Computer Science & Eng',
@@ -124,6 +151,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             setUserRoleState(role);
             setUserProfileState(profile);
+            setSelectedBatchState(profileClassCode);
 
             try {
               localStorage.setItem(LS_KEY_ONBOARDED, 'true');
@@ -163,7 +191,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [todayTimetable, setTodayTimetable] = useState<any[]>([]);
 
   useEffect(() => {
-    const classCode = userProfile.classCode || 'CS-8849';
+    const classCode = selectedBatch || userProfile.classCode || 'CS-4051';
+    setLoadingBatchData(true);
     const batchDocRef = doc(db, "batches", classCode);
 
     const extractTodaySlots = (timetableData: any[]): any[] => {
@@ -258,7 +287,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => unsubscribe();
-  }, [userProfile.classCode]);
+  }, [selectedBatch, userProfile.classCode]);
 
   // Persist role & profile
   useEffect(() => {
@@ -290,7 +319,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const updateUserProfile = useCallback((profile: Partial<UserProfile>) => {
-    setUserProfileState(prev => ({ ...prev, ...profile }));
+    setUserProfileState(prev => {
+      const updated = { ...prev, ...profile };
+      if (profile.classCode) {
+        setSelectedBatchState(profile.classCode);
+      }
+      return updated;
+    });
   }, []);
 
   const completeOnboarding = useCallback((role: UserRole, profileData?: Partial<UserProfile>) => {
@@ -304,6 +339,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserRoleState(role);
     if (profileData) {
       setUserProfileState(prev => ({ ...prev, ...profileData }));
+      if (profileData.classCode) {
+        setSelectedBatchState(profileData.classCode);
+      }
     }
   }, []);
 
@@ -318,6 +356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsOnboarded(false);
     setUserRoleState('student');
     setUserProfileState(DEFAULT_PROFILE);
+    setSelectedBatchState('CS-4051');
   }, []);
 
   const updateSubjectAttendance = useCallback((subjectId: string, deltaAttended: number, deltaTotal: number) => {
@@ -361,6 +400,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isOnboarded,
       completeOnboarding,
       resetOnboarding,
+      selectedBatch,
+      setSelectedBatch,
       batchData,
       todayTimetable,
       loadingBatchData,

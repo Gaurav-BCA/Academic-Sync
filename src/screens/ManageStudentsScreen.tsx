@@ -34,9 +34,9 @@ const LS_STUDENTS_KEY = 'academicsync_managedStudents';
 const LS_AUDIT_KEY = 'academicsync_auditLogs';
 
 export const ManageStudentsScreen: React.FC = () => {
-  const { userProfile, batchData, userRole } = useApp();
+  const { selectedBatch, userProfile, batchData, userRole } = useApp();
   const { coordinatorProfile } = useOnboarding();
-  const currentBatchCode = userProfile?.classCode || batchData?.classCode || coordinatorProfile?.classCode || 'CS-4051';
+  const currentBatchCode = selectedBatch || userProfile?.classCode || batchData?.classCode || coordinatorProfile?.classCode || 'CS-4051';
 
   // Load students state
   const [students, setStudents] = useState<StudentDetail[]>(() => {

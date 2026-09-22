@@ -93,7 +93,7 @@ const HeroCircularMeter: React.FC<{ percentage: number; size?: number }> = ({ pe
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   const navigate = useNavigate();
-  const { subjects, userRole, userProfile, updateUserProfile, todayTimetable, loadingBatchData, batchData } = useApp();
+  const { selectedBatch, setSelectedBatch, subjects, userRole, userProfile, updateUserProfile, todayTimetable, loadingBatchData, batchData } = useApp();
   const { studentProfile, coordinatorProfile, teacherProfile } = useOnboarding();
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('overall');
   const [skipCount, setSkipCount] = useState<number>(3);
@@ -103,12 +103,26 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
   // Teacher Department & Selected Batch Discovery State
   const teacherDepartment = (userProfile?.department || teacherProfile?.department || 'BCA').toUpperCase();
-  const [selectedTeacherBatchCode, setSelectedTeacherBatchCode] = useState<string | null>('CS-4051');
+  const [selectedTeacherBatchCode, setSelectedTeacherBatchCodeState] = useState<string>(selectedBatch || 'CS-4051');
   const [isBatchPickerOpen, setIsBatchPickerOpen] = useState<boolean>(false);
   const [teacherBatches, setTeacherBatches] = useState<any[]>([]);
   const [loadingTeacherBatches, setLoadingTeacherBatches] = useState<boolean>(true);
   const [teacherToast, setTeacherToast] = useState<string | null>(null);
   const [isSubmittingTeacherAction, setIsSubmittingTeacherAction] = useState<boolean>(false);
+
+  // Sync internal teacher batch code with global selectedBatch
+  useEffect(() => {
+    if (selectedBatch) {
+      setSelectedTeacherBatchCodeState(selectedBatch);
+    }
+  }, [selectedBatch]);
+
+  const selectBatchHandler = (code: string, dept?: string) => {
+    setSelectedTeacherBatchCodeState(code);
+    setSelectedBatch(code);
+    updateUserProfile({ classCode: code, department: dept || teacherDepartment });
+    setIsBatchPickerOpen(false);
+  };
 
   // Real-time Firestore Department Batch Query
   useEffect(() => {
@@ -381,7 +395,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
     }
   };
 
-  const activeClassCode = userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-8849';
+  const activeClassCode = selectedBatch || userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-4051';
 
   // Dynamic day calculation for schedule header
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -560,11 +574,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                 {teacherBatches.map((b) => (
                   <div
                     key={b.id || b.classCode}
-                    onClick={() => {
-                      setSelectedTeacherBatchCode(b.classCode);
-                      updateUserProfile({ classCode: b.classCode, department: b.department });
-                      setIsBatchPickerOpen(false);
-                    }}
+                    onClick={() => selectBatchHandler(b.classCode, b.department)}
                     className="bg-white border border-purple-200 hover:border-purple-400 rounded-2xl p-5 space-y-3 cursor-pointer transition-all hover:shadow-md group"
                   >
                     <div className="flex items-center justify-between">
@@ -588,9 +598,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedTeacherBatchCode(b.classCode);
-                        updateUserProfile({ classCode: b.classCode, department: b.department });
-                        setIsBatchPickerOpen(false);
+                        selectBatchHandler(b.classCode, b.department);
                       }}
                       className="w-full py-2 bg-purple-50 group-hover:bg-purple-600 text-purple-700 group-hover:text-white rounded-xl text-xs font-mono font-bold uppercase transition-colors text-center"
                     >

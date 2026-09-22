@@ -29,7 +29,7 @@ interface HeaderNavProps {}
 export const HeaderNav: React.FC<HeaderNavProps> = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userRole, userProfile, resetOnboarding } = useApp();
+  const { selectedBatch, userRole, userProfile, resetOnboarding } = useApp();
   const { isOnboarded, studentProfile, coordinatorProfile, teacherProfile, resetOnboarding: resetOnboardingContext } = useOnboarding();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -40,7 +40,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = () => {
 
   // Dynamic user profile name resolution
   const activeName = (isTeacher ? (teacherProfile?.fullName || userProfile.fullName) : isCoordinator ? coordinatorProfile?.fullName : studentProfile?.fullName) || userProfile.fullName || 'User';
-  const activeClassCode = userProfile.classCode || (isTeacher ? (userProfile.department ? `DEPT: ${userProfile.department}` : 'TEACHER') : isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-8849';
+  const activeClassCode = selectedBatch || userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-4051';
 
   // Strict Role-Based Navigation items
   const navItems: { id: ScreenTab; label: string }[] = (isTeacher || isCoordinator)
