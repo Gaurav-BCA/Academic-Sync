@@ -89,9 +89,9 @@ export const ManageStudentsScreen: React.FC = () => {
       return batchData.subjects.map((s: any) => ({
         subjectCode: s.code,
         subjectName: s.name || s.subject || 'Class Subject',
-        attended: 35,
-        total: 38,
-        percentage: 92.1
+        attended: 0,
+        total: 0,
+        percentage: 100
       }));
     }
     if (batchData?.timetable && Array.isArray(batchData.timetable)) {
@@ -104,9 +104,9 @@ export const ManageStudentsScreen: React.FC = () => {
               map.set(code, {
                 subjectCode: code,
                 subjectName: slot.subject || slot.name || slot.subjectName || 'Class Subject',
-                attended: 35,
-                total: 38,
-                percentage: 92.1
+                attended: 0,
+                total: 0,
+                percentage: 100
               });
             }
           });
@@ -115,11 +115,11 @@ export const ManageStudentsScreen: React.FC = () => {
       if (map.size > 0) return Array.from(map.values());
     }
     return [
-      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 35, total: 38, percentage: 92.1 },
-      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 36, total: 38, percentage: 94.7 },
-      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 34, total: 38, percentage: 89.5 },
-      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 35, total: 38, percentage: 92.1 },
-      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 36, total: 38, percentage: 94.7 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 100 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 100 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 100 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 100 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 100 }
     ];
   }, [batchData]);
 

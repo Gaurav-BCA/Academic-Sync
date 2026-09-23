@@ -13,6 +13,7 @@ const ReconcileScreen = lazy(() => import('./screens/ReconcileScreen').then(m =>
 const LeaderboardScreen = lazy(() => import('./screens/LeaderboardScreen').then(m => ({ default: m.LeaderboardScreen })));
 const AIWelfareScreen = lazy(() => import('./screens/AIWelfareScreen').then(m => ({ default: m.AIWelfareScreen })));
 const ManageStudentsScreen = lazy(() => import('./screens/ManageStudentsScreen').then(m => ({ default: m.ManageStudentsScreen })));
+const FacultyApprovalsScreen = lazy(() => import('./screens/FacultyApprovalsScreen').then(m => ({ default: m.FacultyApprovalsScreen })));
 
 // Route Loading Fallback Skeleton Component
 function RouteLoadingFallback() {
@@ -48,10 +49,27 @@ function AppShell() {
               path="/"
               element={
                 <OnboardingRoute>
-                  <OverviewGateScreen />
+                  <OverviewGateScreen mode="student" />
                 </OnboardingRoute>
               }
             />
+            <Route
+              path="/student"
+              element={
+                <OnboardingRoute>
+                  <OverviewGateScreen mode="student" />
+                </OnboardingRoute>
+              }
+            />
+            <Route
+              path="/faculty-login"
+              element={
+                <OnboardingRoute>
+                  <OverviewGateScreen mode="faculty" />
+                </OnboardingRoute>
+              }
+            />
+
             {/* /timetable is no longer a standalone page — redirect to /dashboard */}
             <Route path="/timetable" element={<Navigate to="/dashboard" replace />} />
 
@@ -101,6 +119,14 @@ function AppShell() {
               element={
                 <CoordinatorRoute>
                   <ManageStudentsScreen />
+                </CoordinatorRoute>
+              }
+            />
+            <Route
+              path="/approvals"
+              element={
+                <CoordinatorRoute>
+                  <FacultyApprovalsScreen />
                 </CoordinatorRoute>
               }
             />

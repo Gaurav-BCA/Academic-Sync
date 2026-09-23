@@ -158,6 +158,22 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch (err) {
           console.warn('Error fetching Firestore user profile on Auth state change:', err);
         }
+      } else {
+        setIsOnboarded(false);
+        setUserRole(null);
+        setStudentProfile(null);
+        setCoordinatorProfile(null);
+        setTeacherProfile(null);
+        try {
+          localStorage.removeItem(LS_KEY_ONBOARDED);
+          localStorage.removeItem(LS_KEY_ROLE);
+          localStorage.removeItem(LS_KEY_STUDENT);
+          localStorage.removeItem(LS_KEY_COORDINATOR);
+          localStorage.removeItem(LS_KEY_TEACHER);
+          localStorage.removeItem(LS_KEY_CR);
+        } catch {
+          // noop
+        }
       }
     });
 

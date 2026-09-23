@@ -19,7 +19,8 @@ import {
   LogIn,
   UserPlus,
   Award,
-  Building
+  Building,
+  AlertCircle
 } from 'lucide-react';
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
@@ -27,16 +28,25 @@ import { doc, setDoc, getDoc, collection, query, where, getDocs, serverTimestamp
 import { parseTimetableWithGemini, ParsedDaySchedule, ParsedSubject } from '../services/geminiService';
 import { Toast, ToastMessage } from '../components/Toast';
 
-export const OverviewGateScreen: React.FC = () => {
+interface OverviewGateScreenProps {
+  mode?: 'student' | 'faculty';
+}
+
+export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = 'student' }) => {
   const navigate = useNavigate();
-  const { completeOnboarding } = useOnboarding();
+  const { completeOnboarding, resetOnboarding } = useOnboarding();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Toast state
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  // Tab switcher state ('student' by default)
-  const [activeTab, setActiveTab] = useState<'student' | 'coordinator' | 'teacher'>('student');
+  // Tab switcher state ('student' for student mode, 'teacher' for faculty mode by default)
+  const [activeTab, setActiveTab] = useState<'student' | 'coordinator' | 'teacher'>(
+    mode === 'faculty' ? 'teacher' : 'student'
+  );
+
+  // Pending teacher alert card state
+  const [pendingApprovalNotice, setPendingApprovalNotice] = useState<string | null>(null);
 
   // Dynamic Toggle Mode state (false = Sign Up, true = Sign In)
   const [isStudentSignIn, setIsStudentSignIn] = useState(false);
@@ -128,6 +138,17 @@ export const OverviewGateScreen: React.FC = () => {
 
         if (userSnap.exists()) {
           const data = userSnap.data();
+          const registeredRole = data.role;
+
+          // STRICT ROLE GUARD FOR STUDENT GATE
+          if (registeredRole && registeredRole !== 'student') {
+            await auth.signOut();
+            resetOnboarding();
+            showToast('error', 'Access Denied: Faculty and Coordinator accounts cannot log in via Student Gate.', 'Access Denied');
+            setIsStudentLoading(false);
+            return;
+          }
+
           sName = data.name || data.fullName || '';
           sRoll = data.rollNumber || '21CS045';
           sCode = data.classCode || 'CS-8849';
@@ -306,6 +327,17 @@ export const OverviewGateScreen: React.FC = () => {
 
         if (userSnap.exists()) {
           const data = userSnap.data();
+          const registeredRole = data.role;
+
+          // STRICT ROLE GUARD FOR COORDINATOR HUB
+          if (registeredRole && registeredRole !== 'coordinator') {
+            await auth.signOut();
+            resetOnboarding();
+            showToast('error', 'Access Denied: Only Class Coordinators can access this tab.', 'Access Denied');
+            setIsCoordSubmitting(false);
+            return;
+          }
+
           cName = data.name || data.fullName || '';
           cInst = data.institution || 'Apex Inst. of Tech';
           cBranch = data.branch || 'Computer Science & Eng';
@@ -467,6 +499,35 @@ export const OverviewGateScreen: React.FC = () => {
 
         if (userSnap.exists()) {
           const data = userSnap.data();
+          const registeredRole = data.role;
+          const status = data.status || 'APPROVED';
+
+          // STRICT ROLE GUARD FOR TEACHER PORTAL
+          if (registeredRole === 'student') {
+            await auth.signOut();
+            resetOnboarding();
+            showToast('error', 'Access Denied: Student accounts cannot access the Faculty Portal.', 'Access Denied');
+            setIsTeacherLoading(false);
+            return;
+          }
+
+          if (registeredRole === 'teacher' && status === 'PENDING_APPROVAL') {
+            await auth.signOut();
+            resetOnboarding();
+            setPendingApprovalNotice("Account Pending Approval. Contact Coordinator to activate.");
+            showToast('error', 'Account Pending Approval. Contact Coordinator to activate.', 'Access Blocked');
+            setIsTeacherLoading(false);
+            return;
+          }
+
+          if (registeredRole !== 'teacher' && registeredRole !== 'coordinator') {
+            await auth.signOut();
+            resetOnboarding();
+            showToast('error', 'Access Denied: Student accounts cannot access the Faculty Portal.', 'Access Denied');
+            setIsTeacherLoading(false);
+            return;
+          }
+
           tName = data.name || data.fullName || '';
           tDept = upperDept;
           if (data.role === 'coordinator') {
@@ -477,6 +538,8 @@ export const OverviewGateScreen: React.FC = () => {
         if (!tName) {
           tName = userCred.user.displayName?.trim() || deriveNameFromEmail(teacherEmail.trim(), 'Faculty Member');
         }
+
+        setPendingApprovalNotice(null);
 
         // Persist/update user department in Firestore
         await setDoc(doc(db, 'users', uid), {
@@ -527,24 +590,22 @@ export const OverviewGateScreen: React.FC = () => {
         const userCred = await createUserWithEmailAndPassword(auth, teacherEmail.trim(), teacherPassword.trim());
         const uid = userCred.user.uid;
 
+        // Store user profile with role: 'teacher' and status: 'PENDING_APPROVAL'
         await setDoc(doc(db, 'users', uid), {
           uid,
           name: teacherName.trim(),
           email: teacherEmail.trim(),
           department: upperDept,
           role: 'teacher',
+          status: 'PENDING_APPROVAL',
           createdAt: serverTimestamp()
         }, { merge: true });
 
-        showToast('success', `Faculty registered! Department: ${upperDept}`, 'Registration Complete');
-        completeOnboarding('teacher', {
-          uid,
-          email: teacherEmail.trim(),
-          fullName: teacherName.trim(),
-          department: upperDept
-        });
-
-        setTimeout(() => navigate('/dashboard'), 800);
+        // Sign out immediately to block dashboard access until coordinator approval
+        await auth.signOut();
+        setPendingApprovalNotice("Account Pending Approval. Please contact your Class Coordinator to activate your account.");
+        showToast('info', 'Faculty registered! Account Pending Approval. Please contact your Class Coordinator to activate your account.', 'Registration Submitted');
+        setIsTeacherSignIn(true);
       } catch (err: any) {
         console.error('Teacher sign-up error:', err);
         if (err.code === 'auth/email-already-in-use') {
@@ -577,60 +638,62 @@ export const OverviewGateScreen: React.FC = () => {
       <div className="flex justify-center">
         <div className="inline-flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 px-4 py-1.5 rounded-full text-xs font-mono text-emerald-700 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="tnum uppercase font-semibold">Academic-Sync • Attendance Management</span>
+          <span className="tnum uppercase font-semibold">
+            {mode === 'faculty' ? 'Academic-Sync • Faculty & Coordinator Portal' : 'Academic-Sync • Student Gate'}
+          </span>
         </div>
       </div>
 
       {/* Hero Headline & Subtext */}
       <div className="text-center max-w-2xl mx-auto space-y-3">
         <h1 className="text-3xl sm:text-4xl font-jakarta font-bold tracking-tight text-neutral-900">
-          Smart Attendance Tracking & <span className="bg-gradient-to-r from-[#FF6B4B] via-[#F59E0B] to-[#10B981] bg-clip-text text-transparent">Predictive Forecasting</span>
+          {mode === 'faculty' ? (
+            <>
+              Faculty & Coordinator <span className="bg-gradient-to-r from-purple-600 via-indigo-600 to-[#FF6B4B] bg-clip-text text-transparent">Administration Portal</span>
+            </>
+          ) : (
+            <>
+              Smart Attendance Tracking & <span className="bg-gradient-to-r from-[#FF6B4B] via-[#F59E0B] to-[#10B981] bg-clip-text text-transparent">Predictive Forecasting</span>
+            </>
+          )}
         </h1>
         <p className="text-sm text-neutral-600 leading-relaxed font-sans max-w-xl mx-auto">
-          Track your class attendance, calculate minimum attendance targets, and get intelligent forecasts to stay above your institution's requirement.
+          {mode === 'faculty'
+            ? 'Manage batch schedules, verify student GPS geofencing, and review faculty registration approvals.'
+            : 'Track your class attendance, calculate minimum attendance targets, and get intelligent forecasts to stay above your institution requirement.'}
         </p>
       </div>
 
-      {/* Centered Sleek Tab Switcher Pill */}
-      <div className="flex justify-center">
-        <div className="bg-white border border-amber-200/70 p-1.5 rounded-full inline-flex items-center space-x-2 shadow-sm flex-wrap justify-center">
-          <button
-            type="button"
-            onClick={() => setActiveTab('student')}
-            className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'student'
-                ? 'bg-[#FF6B4B] text-white shadow-md shadow-orange-500/25'
-                : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
-              }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            <span>Student Gate</span>
-          </button>
+      {/* Centered Sleek Tab Switcher Pill — ONLY rendered for Faculty Portal mode */}
+      {mode === 'faculty' && (
+        <div className="flex justify-center">
+          <div className="bg-white border border-amber-200/70 p-1.5 rounded-full inline-flex items-center space-x-2 shadow-sm flex-wrap justify-center">
+            <button
+              type="button"
+              onClick={() => setActiveTab('teacher')}
+              className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'teacher'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
+                  : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
+                }`}
+            >
+              <Award className="w-4 h-4" />
+              <span>Teacher Hub</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('coordinator')}
-            className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'coordinator'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25'
-                : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
-              }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>Coordinator Hub</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('teacher')}
-            className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'teacher'
-                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
-                : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
-              }`}
-          >
-            <Award className="w-4 h-4" />
-            <span>Teacher Hub</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('coordinator')}
+              className={`px-5 py-2 rounded-full text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 ${activeTab === 'coordinator'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25'
+                  : 'text-neutral-600 hover:text-neutral-900 hover:bg-amber-50/50'
+                }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Coordinator Hub</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Centered Gate Card Container */}
       <div className="max-w-2xl mx-auto">
@@ -1115,6 +1178,18 @@ export const OverviewGateScreen: React.FC = () => {
                     : 'Register as a Faculty Member under your department (e.g. BCA, CSE) to manage batch sessions.'}
                 </p>
               </div>
+
+              {pendingApprovalNotice && (
+                <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start space-x-3 animate-fade-in shadow-xs">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs font-mono text-amber-950 space-y-1">
+                    <strong className="block font-bold font-jakarta text-sm">Account Pending Approval</strong>
+                    <p className="leading-relaxed font-sans text-neutral-700">
+                      Account Pending Approval. Please contact your Class Coordinator to activate your account.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Input Fields Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">

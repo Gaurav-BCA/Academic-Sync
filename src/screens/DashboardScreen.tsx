@@ -36,6 +36,7 @@ import {
 import { TIMETABLE_MATRIX } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
+import { useActiveLectureSlot } from '../hooks/useActiveLectureSlot';
 
 interface DashboardScreenProps {}
 
@@ -512,7 +513,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
       const codeKey = slot.code || slot.subjectCode || '';
       const override = slotStatusMap[slotId] || slotStatusMap[codeKey];
 
-      const computedStatus = override?.status || slot.status || (idx === 0 ? 'conducted_gps' : 'upcoming');
+      const computedStatus = override?.status || slot.status || 'Upcoming';
 
       return {
         id: slotId,
@@ -528,58 +529,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
     });
   }, [todayTimetable, slotStatusMap]);
 
-  // Time parsing helper for slot matching
-  const parseSlotTimes = (timeStr: string) => {
-    if (!timeStr) return null;
-    const parts = timeStr.split('-').map(s => s.trim());
-    if (parts.length < 2) return null;
-
-    const parseTime = (str: string) => {
-      const match = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-      if (!match) return null;
-      let hrs = parseInt(match[1], 10);
-      const mins = parseInt(match[2], 10);
-      const period = match[3]?.toUpperCase();
-      if (period === 'PM' && hrs < 12) hrs += 12;
-      if (period === 'AM' && hrs === 12) hrs = 0;
-      return hrs * 60 + mins;
-    };
-
-    const startMins = parseTime(parts[0]);
-    const endMins = parseTime(parts[1]);
-    if (startMins === null || endMins === null) return null;
-    return { startMins, endMins };
-  };
-
-  const isExactCurrentTimeMatch = useMemo(() => {
-    if (!scheduleItems || scheduleItems.length === 0) return false;
-    const now = new Date();
-    const currentMins = now.getHours() * 60 + now.getMinutes();
-    return scheduleItems.some(item => {
-      const range = parseSlotTimes(item.time);
-      return range ? (currentMins >= range.startMins && currentMins <= range.endMins) : false;
-    });
-  }, [scheduleItems, currentTimeStr]);
-
-  const activeCurrentSlot = useMemo(() => {
-    if (!scheduleItems || scheduleItems.length === 0) return null;
-    const now = new Date();
-    const currentMins = now.getHours() * 60 + now.getMinutes();
-
-    for (const item of scheduleItems) {
-      const range = parseSlotTimes(item.time);
-      if (range && currentMins >= range.startMins && currentMins <= range.endMins) {
-        return item;
-      }
-    }
-    return scheduleItems[0];
-  }, [scheduleItems, currentTimeStr]);
+  // Hook for dynamic time-slot detection
+  const { activeSlot: realTimeActiveSlot, isSlotActive, activeBadgeText } = useActiveLectureSlot(scheduleItems);
+  const activeCurrentSlot = realTimeActiveSlot || scheduleItems[0];
+  const isExactCurrentTimeMatch = isSlotActive;
 
   // Dynamic overall attendance math
   const { totalAttendedAll, totalClassesAll, overallPercentage, totalBufferHeadroom } = useMemo(() => {
     const attended = subjects.reduce((acc, s) => acc + s.attended, 0);
     const total = subjects.reduce((acc, s) => acc + s.total, 0);
-    const pct = total > 0 ? Number(((attended / total) * 100).toFixed(1)) : 81.4;
+    const pct = total > 0 ? Number(((attended / total) * 100).toFixed(1)) : 100;
     const buffer = subjects.reduce((acc, s) => acc + Math.max(0, s.bufferHeadroom), 0);
     return {
       totalAttendedAll: attended,
@@ -809,33 +768,33 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
                   {/* TOP-RIGHT HIGHLIGHT BADGE FOR CURRENT TIME SLOT & SUBJECT */}
                   <div className="shrink-0 w-full md:w-auto">
-                    {isExactCurrentTimeMatch && activeCurrentSlot ? (
-                      <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-300 p-3.5 rounded-2xl space-y-1.5 shadow-sm">
+                    {isSlotActive && activeCurrentSlot ? (
+                      <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-400 p-3.5 rounded-2xl space-y-1.5 shadow-sm">
                         <div className="flex items-center justify-between gap-3 text-xs font-mono">
-                          <span className="font-bold text-purple-900 bg-purple-200/70 px-2 py-0.5 rounded-md flex items-center space-x-1">
-                            <Clock className="w-3.5 h-3.5 text-purple-700 inline mr-1" />
+                          <span className="font-bold text-emerald-950 bg-emerald-200/80 px-2 py-0.5 rounded-md flex items-center space-x-1">
+                            <Clock className="w-3.5 h-3.5 text-emerald-700 inline mr-1" />
                             <span>{activeCurrentSlot.time}</span>
                           </span>
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
                             📍 {activeCurrentSlot.room}
                           </span>
                         </div>
-                        <div className="font-jakarta font-bold text-neutral-900 text-sm truncate max-w-[260px]">
-                          {activeCurrentSlot.subjectName} <span className="text-xs font-mono text-purple-700">({activeCurrentSlot.subjectCode})</span>
+                        <div className="font-jakarta font-bold text-emerald-950 text-sm truncate max-w-[280px]">
+                          {activeBadgeText}
                         </div>
-                        <div className="text-[10px] font-mono text-neutral-500 flex items-center justify-between">
+                        <div className="text-[10px] font-mono text-neutral-600 flex items-center justify-between">
                           <span>Instructor: {activeCurrentSlot.faculty}</span>
-                          <span className="text-purple-600 font-bold">Active Slot</span>
+                          <span className="text-emerald-700 font-bold uppercase">Active Slot</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-amber-50/80 border border-amber-200 p-3 rounded-2xl space-y-1 shadow-xs text-center md:text-right">
-                        <div className="inline-flex items-center space-x-1.5 text-amber-900 text-xs font-mono font-bold uppercase bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
+                      <div className="bg-amber-50/90 border-2 border-amber-300 p-3.5 rounded-2xl space-y-1 shadow-xs text-center md:text-right">
+                        <div className="inline-flex items-center space-x-1.5 text-amber-950 text-xs font-mono font-bold uppercase bg-amber-200/80 px-2.5 py-0.5 rounded-full border border-amber-300">
                           <Clock className="w-3.5 h-3.5 text-amber-700" />
-                          <span>OFF-PEAK / NO ACTIVE LECTURE</span>
+                          <span>{activeBadgeText}</span>
                         </div>
-                        <p className="text-[11px] font-mono text-neutral-600">
-                          {activeCurrentSlot ? `Default Slot: ${activeCurrentSlot.subjectName} (${activeCurrentSlot.subjectCode})` : 'No timetable slots scheduled'}
+                        <p className="text-[11px] font-mono text-neutral-600 mt-1">
+                          No lecture slot matches current system time
                         </p>
                       </div>
                     )}

@@ -9,6 +9,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { 
   doc, 
   getDoc,
+  collection,
   onSnapshot
 } from 'firebase/firestore';
 
@@ -224,7 +225,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return flatSlots;
       }
 
-      return [];
+      // Ensure default status is strictly 'Upcoming' on page load / midnight reset
+      return timetableData.map((s: any, idx: number) => ({
+        ...s,
+        id: s.id || `slot-${idx}`,
+        status: s.status || 'Upcoming'
+      }));
     };
 
     const unsubscribe = onSnapshot(batchDocRef, (snapshot) => {
@@ -252,10 +258,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const code = s.code || s.subjectCode || `SUB-${idx + 1}`;
             const name = s.name || s.subject || s.subjectName || 'Class Subject';
             const faculty = s.faculty || 'Faculty Instructor';
-            const attended = 35;
-            const total = 38;
-            const percentage = Number(((attended / total) * 100).toFixed(1));
-            const status = percentage >= 75 ? 'safe' : percentage >= 72 ? 'warning' : 'critical';
+            const attended = 0;
+            const total = 0;
+            const percentage = 100;
+            const status = 'safe';
             return {
               id: code.toLowerCase().replace(/[^a-z0-9]/g, ''),
               code,
@@ -267,8 +273,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               percentage,
               complianceThreshold: 75,
               status,
-              actionableNote: status === 'safe' ? 'Maintaining baseline compliance.' : 'Attendance warning.',
-              bufferHeadroom: Math.max(0, attended - Math.ceil(0.75 * total))
+              actionableNote: 'No lectures conducted yet.',
+              bufferHeadroom: 0
             };
           });
           if (dynamicSubs.length > 0) {
@@ -288,6 +294,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => unsubscribe();
   }, [selectedBatch, userProfile.classCode]);
+
+  // Real-time Firestore Attendance Logs listener for mathematical counters sync
+  useEffect(() => {
+    const classCode = selectedBatch || userProfile.classCode || 'CS-4051';
+    const logsRef = collection(db, `batches/${classCode}/attendanceLogs`);
+
+    const unsubscribe = onSnapshot(logsRef, (snapshot: any) => {
+      const logs: any[] = [];
+      snapshot.forEach((docSnap: any) => logs.push({ id: docSnap.id, ...docSnap.data() }));
+
+      setSubjects(prevSubjects => {
+        if (!prevSubjects || prevSubjects.length === 0) return prevSubjects;
+
+        return prevSubjects.map(sub => {
+          const subCodeUpper = sub.code.toUpperCase();
+          const subLogs = logs.filter(l => 
+            (l.subjectCode && l.subjectCode.toUpperCase() === subCodeUpper) ||
+            (l.subjectName && l.subjectName.toLowerCase().includes(sub.name.toLowerCase()))
+          );
+
+          const studentLogs = userRole === 'student' && userProfile.uid 
+            ? subLogs.filter(l => l.studentUid === userProfile.uid || l.rollNumber === userProfile.rollNumber)
+            : subLogs;
+
+          const attendedCount = studentLogs.filter(l => l.status === 'PRESENT').length;
+          const totalConducted = studentLogs.length > 0 ? studentLogs.length : (subLogs.length > 0 ? Array.from(new Set(subLogs.map(l => l.timestamp?.seconds || l.date || l.id))).length : 0);
+
+          const percentage = totalConducted > 0 
+            ? Number(((attendedCount / totalConducted) * 100).toFixed(1))
+            : 100;
+
+          const status = percentage >= 75 ? 'safe' : percentage >= 72 ? 'warning' : 'critical';
+
+          return {
+            ...sub,
+            attended: attendedCount,
+            total: totalConducted,
+            percentage,
+            status,
+            actionableNote: totalConducted === 0 
+              ? 'No lectures conducted yet.' 
+              : status === 'safe' 
+              ? 'Maintaining baseline compliance.' 
+              : 'Attendance warning.',
+            bufferHeadroom: Math.max(0, attendedCount - Math.ceil(0.75 * totalConducted))
+          };
+        });
+      });
+    }, (err: any) => {
+      console.warn("Error listening to attendance logs:", err);
+    });
+
+    return () => unsubscribe();
+  }, [selectedBatch, userProfile.classCode, userRole, userProfile.uid, userProfile.rollNumber]);
 
   // Persist role & profile
   useEffect(() => {

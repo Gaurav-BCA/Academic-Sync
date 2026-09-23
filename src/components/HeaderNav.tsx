@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext';
 import { auth } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 
-export type ScreenTab = 'dashboard' | 'reconcile' | 'leaderboard' | 'welfare' | 'manage';
+export type ScreenTab = 'dashboard' | 'reconcile' | 'leaderboard' | 'welfare' | 'manage' | 'approvals';
 
 const TAB_TO_PATH: Record<ScreenTab, string> = {
   dashboard:   '/dashboard',
@@ -14,6 +14,7 @@ const TAB_TO_PATH: Record<ScreenTab, string> = {
   leaderboard: '/leaderboard',
   welfare:     '/welfare',
   manage:      '/manage',
+  approvals:   '/approvals',
 };
 
 const PATH_TO_TAB: Record<string, ScreenTab> = {
@@ -22,6 +23,7 @@ const PATH_TO_TAB: Record<string, ScreenTab> = {
   '/leaderboard':'leaderboard',
   '/welfare':    'welfare',
   '/manage':     'manage',
+  '/approvals':  'approvals',
 };
 
 interface HeaderNavProps {}
@@ -43,10 +45,16 @@ export const HeaderNav: React.FC<HeaderNavProps> = () => {
   const activeClassCode = selectedBatch || userProfile.classCode || (isCoordinator ? coordinatorProfile?.classCode : studentProfile?.classCode) || 'CS-4051';
 
   // Strict Role-Based Navigation items
-  const navItems: { id: ScreenTab; label: string }[] = (isTeacher || isCoordinator)
+  const navItems: { id: ScreenTab; label: string }[] = isTeacher
     ? [
-        { id: 'dashboard', label: isTeacher ? 'Teacher Panel' : 'Dashboard' },
+        { id: 'dashboard', label: 'Teacher Panel' },
         { id: 'manage',    label: 'Manage Students' },
+      ]
+    : isCoordinator
+    ? [
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'manage',    label: 'Manage Students' },
+        { id: 'approvals', label: 'Faculty Approvals' },
       ]
     : [
         { id: 'dashboard',   label: 'Dashboard' },
