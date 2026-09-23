@@ -105,13 +105,9 @@ export const FacultyApprovalsScreen: React.FC = () => {
     setActionLoadingId(teacher.id);
     try {
       const teacherDocRef = doc(db, 'users', teacher.id);
-      await setDoc(teacherDocRef, {
-        status: 'REJECTED',
-        rejectedAt: serverTimestamp(),
-        rejectedBy: userProfile.fullName || 'Class Coordinator'
-      }, { merge: true });
+      await deleteDoc(teacherDocRef);
 
-      setToastMessage(`Registration for ${teacher.name} has been REJECTED.`);
+      setToastMessage("Faculty request rejected and record purged.");
       setTimeout(() => setToastMessage(null), 4000);
     } catch (err: any) {
       console.error("Error rejecting teacher:", err);

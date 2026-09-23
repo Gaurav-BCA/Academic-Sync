@@ -144,6 +144,8 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           if (registeredRole && registeredRole !== 'student') {
             await auth.signOut();
             resetOnboarding();
+            setIsStudentSignIn(true);
+            setStudentPassword('');
             showToast('error', 'Access Denied: Faculty and Coordinator accounts cannot log in via Student Gate.', 'Access Denied');
             setIsStudentLoading(false);
             return;
@@ -181,6 +183,8 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         setTimeout(() => navigate('/dashboard'), 800);
       } catch (err: any) {
         console.error('Student sign-in error:', err);
+        setIsStudentSignIn(true);
+        setStudentPassword('');
         if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
           showToast('error', 'Wrong Password. Please verify your credentials and try again.', 'Sign In Failed');
         } else if (err.code === 'auth/user-not-found') {
@@ -330,9 +334,23 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           const registeredRole = data.role;
 
           // STRICT ROLE GUARD FOR COORDINATOR HUB
+          if (registeredRole === 'student') {
+            await auth.signOut();
+            resetOnboarding();
+            setActiveTab('coordinator');
+            setIsCoordSignIn(true);
+            setCoordPassword('');
+            showToast('error', 'Access Denied: Student accounts are restricted from the Faculty Portal.', 'Access Denied');
+            setIsCoordSubmitting(false);
+            return;
+          }
+
           if (registeredRole && registeredRole !== 'coordinator') {
             await auth.signOut();
             resetOnboarding();
+            setActiveTab('coordinator');
+            setIsCoordSignIn(true);
+            setCoordPassword('');
             showToast('error', 'Access Denied: Only Class Coordinators can access this tab.', 'Access Denied');
             setIsCoordSubmitting(false);
             return;
@@ -386,6 +404,9 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         setTimeout(() => navigate('/dashboard'), 800);
       } catch (err: any) {
         console.error('Coordinator sign-in error:', err);
+        setActiveTab('coordinator');
+        setIsCoordSignIn(true);
+        setCoordPassword('');
         if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
           showToast('error', 'Wrong Password. Please verify your credentials and try again.', 'Sign In Failed');
         } else if (err.code === 'auth/user-not-found') {
@@ -493,46 +514,63 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         const uid = userCred.user.uid;
 
         const userSnap = await getDoc(doc(db, 'users', uid));
-        let tName = '';
+
+        // IF USER DOC DOES NOT EXIST OR STATUS IS REJECTED (PURGED BY COORDINATOR)
+        if (!userSnap.exists() || userSnap.data()?.status === 'REJECTED') {
+          await auth.signOut();
+          resetOnboarding();
+          setActiveTab('teacher');
+          setIsTeacherSignIn(false); // AUTOMATICALLY REDIRECT TO TEACHER SIGN-UP VIEW
+          setTeacherPassword('');
+          showToast('error', 'No active account found for these credentials. Please sign up.', 'Account Not Found');
+          setIsTeacherLoading(false);
+          return;
+        }
+
+        const data = userSnap.data();
+        const registeredRole = data.role;
+        const status = data.status || 'APPROVED';
+
+        // STRICT ROLE GUARD FOR TEACHER PORTAL
+        if (registeredRole === 'student') {
+          await auth.signOut();
+          resetOnboarding();
+          setActiveTab('teacher');
+          setIsTeacherSignIn(true);
+          setTeacherPassword('');
+          showToast('error', 'Access Denied: Student accounts are restricted from the Faculty Portal.', 'Access Denied');
+          setIsTeacherLoading(false);
+          return;
+        }
+
+        if (registeredRole === 'teacher' && status === 'PENDING_APPROVAL') {
+          await auth.signOut();
+          resetOnboarding();
+          setActiveTab('teacher');
+          setIsTeacherSignIn(true);
+          setTeacherPassword('');
+          setPendingApprovalNotice("Account Pending Approval. Please contact your Class Coordinator to activate.");
+          showToast('error', 'Account Pending Approval. Please contact your Class Coordinator to activate.', 'Access Blocked');
+          setIsTeacherLoading(false);
+          return;
+        }
+
+        if (registeredRole !== 'teacher' && registeredRole !== 'coordinator') {
+          await auth.signOut();
+          resetOnboarding();
+          setActiveTab('teacher');
+          setIsTeacherSignIn(true);
+          setTeacherPassword('');
+          showToast('error', 'Access Denied: Student accounts are restricted from the Faculty Portal.', 'Access Denied');
+          setIsTeacherLoading(false);
+          return;
+        }
+
+        let tName = data.name || data.fullName || '';
         let tDept = upperDept;
         let tRole = 'teacher';
-
-        if (userSnap.exists()) {
-          const data = userSnap.data();
-          const registeredRole = data.role;
-          const status = data.status || 'APPROVED';
-
-          // STRICT ROLE GUARD FOR TEACHER PORTAL
-          if (registeredRole === 'student') {
-            await auth.signOut();
-            resetOnboarding();
-            showToast('error', 'Access Denied: Student accounts cannot access the Faculty Portal.', 'Access Denied');
-            setIsTeacherLoading(false);
-            return;
-          }
-
-          if (registeredRole === 'teacher' && status === 'PENDING_APPROVAL') {
-            await auth.signOut();
-            resetOnboarding();
-            setPendingApprovalNotice("Account Pending Approval. Contact Coordinator to activate.");
-            showToast('error', 'Account Pending Approval. Contact Coordinator to activate.', 'Access Blocked');
-            setIsTeacherLoading(false);
-            return;
-          }
-
-          if (registeredRole !== 'teacher' && registeredRole !== 'coordinator') {
-            await auth.signOut();
-            resetOnboarding();
-            showToast('error', 'Access Denied: Student accounts cannot access the Faculty Portal.', 'Access Denied');
-            setIsTeacherLoading(false);
-            return;
-          }
-
-          tName = data.name || data.fullName || '';
-          tDept = upperDept;
-          if (data.role === 'coordinator') {
-            tRole = 'coordinator';
-          }
+        if (data.role === 'coordinator') {
+          tRole = 'coordinator';
         }
 
         if (!tName) {
@@ -563,6 +601,9 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         setTimeout(() => navigate('/dashboard'), 800);
       } catch (err: any) {
         console.error('Teacher sign-in error:', err);
+        setActiveTab('teacher');
+        setIsTeacherSignIn(true);
+        setTeacherPassword('');
         if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
           showToast('error', 'Wrong Password. Please verify your credentials and try again.');
         } else if (err.code === 'auth/user-not-found') {
@@ -609,8 +650,28 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
       } catch (err: any) {
         console.error('Teacher sign-up error:', err);
         if (err.code === 'auth/email-already-in-use') {
-          showToast('info', 'An account already exists for this email. Switched to Sign In mode.');
-          setIsTeacherSignIn(true);
+          try {
+            // Re-authenticate existing Firebase Auth user whose Firestore record was purged
+            const userCred = await signInWithEmailAndPassword(auth, teacherEmail.trim(), teacherPassword.trim());
+            const uid = userCred.user.uid;
+            await setDoc(doc(db, 'users', uid), {
+              uid,
+              name: teacherName.trim(),
+              email: teacherEmail.trim(),
+              department: upperDept,
+              role: 'teacher',
+              status: 'PENDING_APPROVAL',
+              createdAt: serverTimestamp()
+            }, { merge: true });
+
+            await auth.signOut();
+            setPendingApprovalNotice("Account Pending Approval. Please contact your Class Coordinator to activate your account.");
+            showToast('info', 'Faculty re-registration submitted! Account Pending Approval.', 'Registration Submitted');
+            setIsTeacherSignIn(true);
+          } catch (signInErr: any) {
+            showToast('info', 'An account already exists for this email. Switched to Sign In mode.');
+            setIsTeacherSignIn(true);
+          }
         } else {
           showToast('error', err.message || 'Failed to register teacher account.');
         }

@@ -35,9 +35,10 @@ export interface TeacherProfile {
 
 export type CRProfile = CoordinatorProfile;
 
-interface OnboardingContextValue {
+export interface OnboardingContextValue {
   isOnboarded: boolean;
   userRole: UserRole;
+  authLoading: boolean;
   studentProfile: StudentProfile | null;
   coordinatorProfile: CoordinatorProfile | null;
   teacherProfile: TeacherProfile | null;
@@ -56,6 +57,8 @@ const LS_KEY_TEACHER = 'academicsync_teacherProfile';
 const LS_KEY_CR = 'academicsync_crProfile';
 
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+
   const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
     try {
       return localStorage.getItem(LS_KEY_ONBOARDED) === 'true';
@@ -107,56 +110,67 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        setIsOnboarded(true);
         try {
+          const wasOnboarded = localStorage.getItem(LS_KEY_ONBOARDED) === 'true';
           const userDocRef = doc(db, 'users', user.uid);
           const userDoc = await getDoc(userDocRef);
 
           if (userDoc.exists()) {
             const data = userDoc.data();
             const role: UserRole = data.role === 'teacher' ? 'teacher' : data.role === 'coordinator' ? 'coordinator' : 'student';
-            setUserRole(role);
-            localStorage.setItem(LS_KEY_ONBOARDED, 'true');
-            localStorage.setItem(LS_KEY_ROLE, role);
+            const status = data.status || 'APPROVED';
 
-            if (role === 'student') {
-              const profile: StudentProfile = {
-                uid: user.uid,
-                email: user.email || data.email || '',
-                fullName: data.name || data.fullName || 'Student',
-                rollNumber: data.rollNumber || '21CS045',
-                classCode: data.classCode || 'CS-8849'
-              };
-              setStudentProfile(profile);
-              localStorage.setItem(LS_KEY_STUDENT, JSON.stringify(profile));
-            } else if (role === 'teacher') {
-              const profile: TeacherProfile = {
-                uid: user.uid,
-                email: user.email || data.email || '',
-                fullName: data.name || data.fullName || 'Faculty Member',
-                department: data.department || 'BCA',
-                classCode: data.classCode
-              };
-              setTeacherProfile(profile);
-              localStorage.setItem(LS_KEY_TEACHER, JSON.stringify(profile));
-            } else {
-              const profile: CoordinatorProfile = {
-                uid: user.uid,
-                email: user.email || data.email || '',
-                fullName: data.name || data.fullName || 'Class Coordinator',
-                institution: data.institution || 'Apex Inst. of Tech',
-                branch: data.branch || 'Computer Science & Eng',
-                semester: data.term || data.semester || 'Sem VI',
-                term: data.term || data.semester || 'Sem VI',
-                classCode: data.classCode || 'CS-8849',
-                department: data.department || 'BCA'
-              };
-              setCoordinatorProfile(profile);
-              localStorage.setItem(LS_KEY_COORDINATOR, JSON.stringify(profile));
+            if (role === 'teacher' && status === 'PENDING_APPROVAL') {
+              // Pending teacher account — block onboarding until coordinator approves
+              setIsOnboarded(false);
+              setUserRole(null);
+            } else if (wasOnboarded) {
+              setIsOnboarded(true);
+              setUserRole(role);
+              localStorage.setItem(LS_KEY_ONBOARDED, 'true');
+              localStorage.setItem(LS_KEY_ROLE, role);
+
+              if (role === 'student') {
+                const profile: StudentProfile = {
+                  uid: user.uid,
+                  email: user.email || data.email || '',
+                  fullName: data.name || data.fullName || 'Student',
+                  rollNumber: data.rollNumber || '21CS045',
+                  classCode: data.classCode || 'CS-8849'
+                };
+                setStudentProfile(profile);
+                localStorage.setItem(LS_KEY_STUDENT, JSON.stringify(profile));
+              } else if (role === 'teacher') {
+                const profile: TeacherProfile = {
+                  uid: user.uid,
+                  email: user.email || data.email || '',
+                  fullName: data.name || data.fullName || 'Faculty Member',
+                  department: data.department || 'BCA',
+                  classCode: data.classCode
+                };
+                setTeacherProfile(profile);
+                localStorage.setItem(LS_KEY_TEACHER, JSON.stringify(profile));
+              } else {
+                const profile: CoordinatorProfile = {
+                  uid: user.uid,
+                  email: user.email || data.email || '',
+                  fullName: data.name || data.fullName || 'Class Coordinator',
+                  institution: data.institution || 'Apex Inst. of Tech',
+                  branch: data.branch || 'Computer Science & Eng',
+                  semester: data.term || data.semester || 'Sem VI',
+                  term: data.term || data.semester || 'Sem VI',
+                  classCode: data.classCode || 'CS-8849',
+                  department: data.department || 'BCA'
+                };
+                setCoordinatorProfile(profile);
+                localStorage.setItem(LS_KEY_COORDINATOR, JSON.stringify(profile));
+              }
             }
           }
         } catch (err) {
           console.warn('Error fetching Firestore user profile on Auth state change:', err);
+        } finally {
+          setAuthLoading(false);
         }
       } else {
         setIsOnboarded(false);
@@ -174,6 +188,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch {
           // noop
         }
+        setAuthLoading(false);
       }
     });
 
@@ -223,6 +238,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     <OnboardingContext.Provider value={{ 
       isOnboarded, 
       userRole, 
+      authLoading,
       studentProfile, 
       coordinatorProfile, 
       teacherProfile,
