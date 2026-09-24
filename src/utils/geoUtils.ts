@@ -30,3 +30,22 @@ export function calculateHaversineDistance(
 
   return Math.round(R * c);
 }
+
+/**
+ * Verifies if a student is within the campus geofence radius and returns attendance status.
+ */
+export function verifyGeofenceStatus(
+  studentLat: number,
+  studentLng: number,
+  campusLat: number,
+  campusLng: number,
+  radiusMeters: number = 50
+): { distanceMeters: number; isWithin: boolean; status: 'PRESENT' | 'ABSENT' } {
+  const distanceMeters = calculateHaversineDistance(studentLat, studentLng, campusLat, campusLng);
+  const isWithin = distanceMeters <= radiusMeters;
+  return {
+    distanceMeters,
+    isWithin,
+    status: isWithin ? 'PRESENT' : 'ABSENT'
+  };
+}
