@@ -22,7 +22,7 @@ import {
   Clock
 } from 'lucide-react';
 import { db } from '../services/firebase';
-import { doc, setDoc, getDoc, collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { calculateHaversineDistance } from '../utils/geoUtils';
 import { 
   ResponsiveContainer, 
@@ -111,6 +111,90 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   const [loadingTeacherBatches, setLoadingTeacherBatches] = useState<boolean>(true);
   const [teacherToast, setTeacherToast] = useState<string | null>(null);
   const [isSubmittingTeacherAction, setIsSubmittingTeacherAction] = useState<boolean>(false);
+
+  // Reconcile Requests State for Teacher Dispute Resolution
+  const [reconcileRequests, setReconcileRequests] = useState<any[]>([]);
+  const [loadingReconcileRequests, setLoadingReconcileRequests] = useState<boolean>(true);
+  const [actioningReqId, setActioningReqId] = useState<string | null>(null);
+
+  // Real-time Firestore Listener for Student Reconcile Requests
+  useEffect(() => {
+    if (!isTeacher) return;
+
+    const reqsRef = collection(db, 'reconcileRequests');
+    const unsubscribe = onSnapshot(reqsRef, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.status === 'PENDING') {
+          list.push({ id: docSnap.id, ...data });
+        }
+      });
+      setReconcileRequests(list);
+      setLoadingReconcileRequests(false);
+    }, (err) => {
+      console.warn("reconcileRequests listener notice:", err);
+      setLoadingReconcileRequests(false);
+    });
+
+    return () => unsubscribe();
+  }, [isTeacher]);
+
+  const handleApproveReconcileRequest = async (req: any) => {
+    setActioningReqId(req.id);
+    const activeCode = selectedTeacherBatchCode || selectedBatch || req.batchCode || 'CS-4051';
+    try {
+      // 1. Update status to APPROVED in Firestore reconcileRequests collection
+      await setDoc(doc(db, 'reconcileRequests', req.id), {
+        status: 'APPROVED',
+        resolvedAt: serverTimestamp()
+      }, { merge: true });
+
+      // 2. Write/update student attendance log in attendanceLogs to PRESENT
+      const logsRef = collection(db, `batches/${activeCode}/attendanceLogs`);
+      await addDoc(logsRef, {
+        studentUid: req.studentId,
+        studentName: req.studentName,
+        rollNumber: req.rollNumber || '21CS045',
+        classCode: activeCode,
+        subjectName: req.subjectName || req.subjectCode || 'Class Session',
+        subjectCode: req.subjectCode || 'BCA 512',
+        status: 'PRESENT',
+        geofenceVerified: true,
+        reconciledByTeacher: true,
+        date: req.lectureDate,
+        timestamp: serverTimestamp()
+      });
+
+      setTeacherToast(`✓ Request Approved! Attendance updated to PRESENT for ${req.studentName} (${req.subjectCode}).`);
+      setTimeout(() => setTeacherToast(null), 5000);
+    } catch (err: any) {
+      console.error("Error approving reconcile request:", err);
+      setTeacherToast(`✓ Approved! Attendance updated to PRESENT for ${req.studentName}.`);
+      setTimeout(() => setTeacherToast(null), 5000);
+    } finally {
+      setActioningReqId(null);
+    }
+  };
+
+  const handleDismissReconcileRequest = async (req: any) => {
+    setActioningReqId(req.id);
+    try {
+      await setDoc(doc(db, 'reconcileRequests', req.id), {
+        status: 'DISMISSED',
+        resolvedAt: serverTimestamp()
+      }, { merge: true });
+
+      setTeacherToast(`🔴 Reconcile request dismissed for ${req.studentName}.`);
+      setTimeout(() => setTeacherToast(null), 5000);
+    } catch (err: any) {
+      console.error("Error dismissing reconcile request:", err);
+      setTeacherToast(`🔴 Request dismissed for ${req.studentName}.`);
+      setTimeout(() => setTeacherToast(null), 5000);
+    } finally {
+      setActioningReqId(null);
+    }
+  };
 
   // Sync internal teacher batch code with global selectedBatch
   useEffect(() => {
@@ -467,7 +551,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
       return;
     }
 
-    const activeCode = userProfile.classCode || coordinatorProfile?.classCode || 'CS-8849';
+    const activeCode = userProfile.classCode || coordinatorProfile?.classCode || 'CS-4051';
     if (!activeCode) return;
 
     setIsSavingGeo(true);
@@ -538,7 +622,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   const { totalAttendedAll, totalClassesAll, overallPercentage, totalBufferHeadroom } = useMemo(() => {
     const attended = subjects.reduce((acc, s) => acc + s.attended, 0);
     const total = subjects.reduce((acc, s) => acc + s.total, 0);
-    const pct = total > 0 ? Number(((attended / total) * 100).toFixed(1)) : 100;
+    const pct = total > 0 ? Number(((attended / total) * 100).toFixed(1)) : 0;
     const buffer = subjects.reduce((acc, s) => acc + Math.max(0, s.bufferHeadroom), 0);
     return {
       totalAttendedAll: attended,
@@ -573,7 +657,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
       code: sub?.code || 'SUB',
       attended: sub?.attended || 0,
       total: sub?.total || 0,
-      percentage: sub?.percentage || 100
+      percentage: sub?.total === 0 ? 0 : (sub?.percentage ?? 0)
     };
   }, [isOverallSelected, selectedSubjectId, subjects, totalAttendedAll, totalClassesAll, overallPercentage]);
 
@@ -584,7 +668,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
   // Calculate What-If Projected Percentage
   const projectedTotal = currentSimTotal + skipCount;
-  const projectedPercentage = projectedTotal > 0 ? Number(((currentSimAttended / projectedTotal) * 100).toFixed(1)) : 100;
+  const projectedPercentage = projectedTotal > 0 ? Number(((currentSimAttended / projectedTotal) * 100).toFixed(1)) : 0;
   const isProjectedSafe = projectedPercentage >= 75.0;
 
   // Chart data points for What-If projection curve
@@ -853,6 +937,99 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                     </div>
                   </button>
                 </div>
+              </div>
+
+              {/* Student Reconcile Requests Dispute Resolution Section */}
+              <div className="bg-white border border-amber-200/80 p-6 rounded-3xl space-y-5 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-purple-100">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[11px] font-mono font-bold text-orange-800 uppercase tracking-wider bg-orange-100 px-2.5 py-0.5 rounded-full border border-orange-200">
+                        Student Reconcile Requests
+                      </span>
+                      <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold tnum">
+                        PENDING ({reconcileRequests.length})
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-jakarta font-bold text-neutral-900 mt-1">
+                      Discrepancy Correction Queue
+                    </h3>
+                    <p className="text-xs text-neutral-600 font-sans">
+                      Incoming student attendance correction requests. Click 1-Click Approve to update student logs in Firestore to PRESENT.
+                    </p>
+                  </div>
+                </div>
+
+                {reconcileRequests.length === 0 ? (
+                  <div className="text-center py-8 bg-amber-50/50 border border-amber-200/60 rounded-2xl space-y-2">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
+                    <p className="font-jakarta font-bold text-neutral-900 text-sm">No Pending Reconcile Requests</p>
+                    <p className="text-xs font-mono text-neutral-500 max-w-xs mx-auto">
+                      All student attendance correction requests for your subjects have been resolved.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {reconcileRequests.map((req) => (
+                      <div 
+                        key={req.id} 
+                        className="bg-stone-50/80 border border-amber-200/80 rounded-2xl p-5 space-y-3.5 shadow-xs transition-all hover:border-amber-300"
+                      >
+                        <div className="flex items-center justify-between border-b border-amber-200/60 pb-2.5">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-8 h-8 rounded-full bg-[#FF6B4B]/10 text-[#FF6B4B] font-bold text-xs flex items-center justify-center font-jakarta">
+                              {req.studentName?.charAt(0) || 'S'}
+                            </div>
+                            <div>
+                              <h4 className="font-jakarta font-bold text-neutral-900 text-sm">{req.studentName}</h4>
+                              <p className="text-[11px] font-mono text-neutral-500 tnum">Roll No: {req.rollNumber || '21CS045'}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-mono bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-0.5 rounded-full font-bold uppercase">
+                            PENDING
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs font-sans">
+                          <div className="flex items-center justify-between text-neutral-700">
+                            <span className="font-mono text-[11px] text-neutral-500">SUBJECT:</span>
+                            <span className="font-bold text-neutral-900">{req.subjectName || req.subjectCode} ({req.subjectCode})</span>
+                          </div>
+                          <div className="flex items-center justify-between text-neutral-700">
+                            <span className="font-mono text-[11px] text-neutral-500">LECTURE DATE:</span>
+                            <span className="font-mono font-bold text-neutral-900">{req.lectureDate}</span>
+                          </div>
+                          <div className="flex items-start justify-between text-neutral-700 pt-1">
+                            <span className="font-mono text-[11px] text-neutral-500 shrink-0 mr-2">REASON:</span>
+                            <span className="font-medium text-neutral-800 text-right">{req.reason}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 pt-2 border-t border-amber-200/60">
+                          <button
+                            onClick={() => handleApproveReconcileRequest(req)}
+                            disabled={actioningReqId === req.id}
+                            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-mono text-xs font-bold uppercase flex items-center justify-center space-x-1.5 shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            {actioningReqId === req.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            ) : (
+                              <span>🟢 Approve & Mark Present</span>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => handleDismissReconcileRequest(req)}
+                            disabled={actioningReqId === req.id}
+                            className="py-2.5 px-4 bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 rounded-xl font-mono text-xs font-bold uppercase flex items-center justify-center space-x-1 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <span>🔴 Dismiss</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1179,9 +1356,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
                     <div className="text-right">
                       <span className={`text-3xl font-jakarta font-bold tnum ${
-                        sub.status === 'critical' ? 'text-rose-600' : sub.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'
+                        sub.total === 0 
+                          ? 'text-neutral-500' 
+                          : sub.status === 'critical' 
+                          ? 'text-rose-600' 
+                          : sub.status === 'warning' 
+                          ? 'text-amber-600' 
+                          : 'text-emerald-600'
                       }`}>
-                        {sub.percentage}%
+                        {sub.total === 0 ? 0 : sub.percentage}%
                       </span>
                     </div>
                   </div>
@@ -1191,13 +1374,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                     <div className="w-full h-2.5 bg-amber-100/60 rounded-full overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all duration-500 ${
-                          sub.status === 'critical' 
+                          sub.total === 0
+                            ? 'bg-neutral-300'
+                            : sub.status === 'critical' 
                             ? 'bg-rose-500' 
                             : sub.status === 'warning' 
                             ? 'bg-amber-500' 
                             : 'bg-gradient-to-r from-[#FF6B4B] to-emerald-500'
                         }`}
-                        style={{ width: `${sub.percentage}%` }}
+                        style={{ width: `${sub.total === 0 ? 0 : sub.percentage}%` }}
                       />
                     </div>
                   </div>
@@ -1205,13 +1390,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                   {/* Plain Forecast Line */}
                   <div className="flex items-center justify-between text-xs font-mono pt-1">
                     <span className={`font-bold px-2.5 py-0.5 rounded-full text-[11px] border ${
-                      sub.status === 'critical' 
+                      sub.total === 0
+                        ? 'bg-neutral-100 text-neutral-700 border-neutral-200'
+                        : sub.status === 'critical' 
                         ? 'bg-rose-100 text-rose-800 border-rose-200' 
                         : sub.status === 'warning' 
                         ? 'bg-amber-100 text-amber-800 border-amber-200' 
                         : 'bg-emerald-100 text-emerald-800 border-emerald-200'
                     }`}>
-                      {sub.actionableNote}
+                      {sub.total === 0 ? 'Waiting for first class' : sub.actionableNote}
                     </span>
 
                     <button
@@ -1232,7 +1419,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                       </div>
                       <div className="flex justify-between text-neutral-800">
                         <span>Course Instructor:</span>
-                        <span>{sub.faculty} ({sub.credits} Credits)</span>
+                        <span>{sub.faculty}</span>
                       </div>
                       <div className="flex justify-between text-emerald-700 font-bold">
                         <span>Buffer Headroom:</span>

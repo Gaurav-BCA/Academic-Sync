@@ -10,7 +10,7 @@ import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
 
 export const AIWelfareScreen: React.FC = () => {
-  const { userProfile, subjects: appSubjects } = useApp();
+  const { userProfile, subjects: appSubjects, selectedBatch, batchData } = useApp();
   const { studentProfile, coordinatorProfile } = useOnboarding();
 
   const [facultyName, setFacultyName] = useState('Mrs. Meenakshi Manchanda');
@@ -25,49 +25,52 @@ export const AIWelfareScreen: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const studentName = studentProfile?.fullName || coordinatorProfile?.fullName || userProfile.fullName || 'Student';
-  const rollNumber = studentProfile?.rollNumber || userProfile.rollNumber || 'Student ID';
+  const studentName = studentProfile?.fullName || coordinatorProfile?.fullName || userProfile?.fullName || 'Gaurav Bisht';
+  const rollNumber = studentProfile?.rollNumber || userProfile?.rollNumber || '2241265330009';
+  const classCode = selectedBatch || userProfile?.classCode || 'CS-4051';
+  const program = userProfile?.department || (studentProfile as any)?.branch || 'BCA';
+  const semester = batchData?.semester || batchData?.term || userProfile?.semester || (studentProfile as any)?.semester || 'Semester V';
+  const institutionName = batchData?.institution || userProfile?.institution || (studentProfile as any)?.institution || 'MIET Kumaon';
 
   const [generatedEmail, setGeneratedEmail] = useState({
     subject: 'Request for Attendance Reinstatement — Java Programming (BCA 512)',
     body: `Respected Mrs. Meenakshi Manchanda,
 
-I am writing to formally request attendance reinstatement for the Java Programming (BCA 512) lecture conducted on September 17, 2026. 
+I am writing to formally request attendance reinstatement for the BCA 512 Java Programming lecture conducted on 2026-09-17.
 
-On the specified date, I was officially assigned to duty representing the institution at the NSS Placement Drive in the Main Auditorium, pursuant to official institutional approval.
+Missed session due to NSS placement drive coordination duty at Main Auditorium. Needed to assist 3rd year students. Requesting formal leave credit.
 
-I have attached the verified duty slip countersigned by the Placement Cell for your review. I would be deeply grateful if my absence for this lecture could be recorded as authorized duty leave.
-
-Thank you for your time, consideration, and continued guidance.
+I kindly request you to consider my application and record my attendance accordingly. Thank you for your time and guidance.
 
 Sincerely,
 ${studentName}
 Roll No: ${rollNumber}
-Department of Computer Science & Engineering
-Apex Institute of Technology`
+${program} — ${semester} (Batch ${classCode})
+${institutionName}`
   });
 
   const handleSynthesize = () => {
     setIsGenerating(true);
     setTimeout(() => {
       setIsGenerating(false);
+
+      const formattedReason = informalInput.trim() || `Absence due to ${reasonCategory.toLowerCase()}.`;
+
       setGeneratedEmail({
-        subject: `[Formal Request] Attendance Exception for ${subject} on ${date}`,
-        body: `Respected ${facultyName},
+        subject: `[Formal Request] Attendance Reinstatement for ${subject} on ${date}`,
+        body: `Respected ${facultyName || 'Faculty Instructor'},
 
-I am writing to formally submit an application regarding my attendance record for ${subject} conducted on ${date}.
+I am writing to formally request attendance reinstatement for the ${subject} lecture conducted on ${date}.
 
-Reason for Absence / Duty: ${informalInput}
+${formattedReason}
 
-As per institutional guidelines regarding ${reasonCategory}, I request that my attendance record for this session be updated under the authorized duty/medical leave policy. Relevant proof documentation is attached for your verification.
+I kindly request you to consider my application and record my attendance accordingly. Thank you for your time and guidance.
 
-I remain committed to keeping up with all course assignments and class requirements.
-
-Respectfully yours,
+Sincerely,
 ${studentName}
 Roll No: ${rollNumber}
-Department of Computer Science & Engineering
-Apex Institute of Technology`
+${program} — ${semester} (Batch ${classCode})
+${institutionName}`
       });
       setToastMessage('Formal leave application draft generated!');
       setTimeout(() => setToastMessage(null), 3500);

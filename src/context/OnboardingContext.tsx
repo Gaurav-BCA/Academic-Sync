@@ -136,7 +136,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   email: user.email || data.email || '',
                   fullName: data.name || data.fullName || 'Student',
                   rollNumber: data.rollNumber || '21CS045',
-                  classCode: data.classCode || 'CS-8849'
+                  classCode: data.classCode || 'CS-4051'
                 };
                 setStudentProfile(profile);
                 localStorage.setItem(LS_KEY_STUDENT, JSON.stringify(profile));
@@ -157,9 +157,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   fullName: data.name || data.fullName || 'Class Coordinator',
                   institution: data.institution || 'Apex Inst. of Tech',
                   branch: data.branch || 'Computer Science & Eng',
-                  semester: data.term || data.semester || 'Sem VI',
-                  term: data.term || data.semester || 'Sem VI',
-                  classCode: data.classCode || 'CS-8849',
+                  semester: data.semester || data.term || 'Semester V',
+                  term: data.semester || data.term || 'Semester V',
+                  classCode: data.classCode || 'CS-4051',
                   department: data.department || 'BCA'
                 };
                 setCoordinatorProfile(profile);

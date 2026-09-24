@@ -50,11 +50,11 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Alex Rivera',
     rollNumber: '21CS045',
     subjects: [
-      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 100 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 0 }
     ],
     lectures: []
   },
@@ -63,11 +63,11 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Priya Sharma',
     rollNumber: '21CS012',
     subjects: [
-      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 100 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 0 }
     ],
     lectures: []
   },
@@ -76,11 +76,11 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'David Chen',
     rollNumber: '21CS018',
     subjects: [
-      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 100 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 0 }
     ],
     lectures: []
   },
@@ -89,11 +89,11 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Sarah Jenkins',
     rollNumber: '21CS024',
     subjects: [
-      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 100 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 0 }
     ],
     lectures: []
   },
@@ -102,11 +102,11 @@ export const INITIAL_BATCH_STUDENTS: StudentDetail[] = [
     name: 'Marcus Thorne',
     rollNumber: '21CS031',
     subjects: [
-      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 100 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 0 }
     ],
     lectures: []
   }

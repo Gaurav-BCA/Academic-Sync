@@ -65,10 +65,10 @@ const LS_KEY_RECON_SUBMISSIONS = 'academicsync_reconSubmissions';
 const DEFAULT_PROFILE: UserProfile = {
   fullName: 'User Account',
   rollNumber: '21CS045',
-  classCode: 'CS-8849',
+  classCode: 'CS-4051',
   institution: 'Apex Inst. of Tech',
   branch: 'Computer Science & Eng',
-  semester: 'Sem VI',
+  semester: 'Semester V',
   department: 'BCA'
 };
 
@@ -137,7 +137,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (userDocSnap.exists()) {
             const data = userDocSnap.data();
             const role: UserRole = data.role === 'teacher' ? 'teacher' : data.role === 'coordinator' ? 'coordinator' : 'student';
-            const profileClassCode = data.classCode || (role === 'teacher' ? 'CS-4051' : 'CS-8849');
+            const profileClassCode = data.classCode || (role === 'teacher' ? 'CS-4051' : 'CS-4051');
             const profile: UserProfile = {
               uid: user.uid,
               fullName: data.name || data.fullName || user.displayName || 'User',
@@ -146,7 +146,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               email: user.email || data.email || '',
               institution: data.institution || 'Apex Inst. of Tech',
               branch: data.branch || 'Computer Science & Eng',
-              semester: data.term || data.semester || 'Sem VI',
+              semester: data.semester || data.term || 'Semester V',
               department: data.department || (data.branch ? (data.branch.includes('BCA') ? 'BCA' : 'CSE') : 'BCA')
             };
 
@@ -260,7 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const faculty = s.faculty || 'Faculty Instructor';
             const attended = 0;
             const total = 0;
-            const percentage = 100;
+            const percentage = 0;
             const status = 'safe';
             return {
               id: code.toLowerCase().replace(/[^a-z0-9]/g, ''),
@@ -273,7 +273,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               percentage,
               complianceThreshold: 75,
               status,
-              actionableNote: 'No lectures conducted yet.',
+              actionableNote: 'Waiting for first class',
               bufferHeadroom: 0
             };
           });
@@ -323,9 +323,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           const percentage = totalConducted > 0 
             ? Number(((attendedCount / totalConducted) * 100).toFixed(1))
-            : 100;
+            : 0;
 
-          const status = percentage >= 75 ? 'safe' : percentage >= 72 ? 'warning' : 'critical';
+          const status = totalConducted === 0 ? 'safe' : (percentage >= 75 ? 'safe' : percentage >= 72 ? 'warning' : 'critical');
 
           return {
             ...sub,
@@ -334,7 +334,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             percentage,
             status,
             actionableNote: totalConducted === 0 
-              ? 'No lectures conducted yet.' 
+              ? 'Waiting for first class' 
               : status === 'safe' 
               ? 'Maintaining baseline compliance.' 
               : 'Attendance warning.',

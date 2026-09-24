@@ -59,7 +59,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
   const [showStudentPassword, setShowStudentPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [rollNumber, setRollNumber] = useState('');
-  const [tokenInput, setTokenInput] = useState('CS-8849');
+  const [tokenInput, setTokenInput] = useState('');
   const [isStudentLoading, setIsStudentLoading] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
 
@@ -70,7 +70,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
   const [coordinatorName, setCoordinatorName] = useState('Prof. S. Chakrabarti');
   const [institution, setInstitution] = useState('Apex Inst. of Tech');
   const [branch, setBranch] = useState('Computer Science & Eng');
-  const [semester, setSemester] = useState('Sem VI');
+  const [semester, setSemester] = useState('Semester V');
 
   // Teacher Hub state & password visibility toggle
   const [teacherEmail, setTeacherEmail] = useState('');
@@ -86,17 +86,11 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
   const [isCoordSubmitting, setIsCoordSubmitting] = useState(false);
   const [parsedTimetable, setParsedTimetable] = useState<ParsedDaySchedule[] | null>(null);
   const [parsedSubjects, setParsedSubjects] = useState<ParsedSubject[] | null>(null);
-  const [_generatedClassCode, setGeneratedClassCode] = useState<string>('CS-8849');
+  const [_generatedClassCode, setGeneratedClassCode] = useState<string>('');
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   const showToast = (type: 'error' | 'success' | 'info', message: string, title?: string) => {
     setToast({ id: String(Date.now()), type, message, title });
-  };
-
-  const handleCopyToken = () => {
-    setTokenInput('CS-8849');
-    setCopiedToken(true);
-    setTimeout(() => setCopiedToken(false), 2000);
   };
 
   // Helper to format email username into capitalized full name
@@ -134,7 +128,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         const userSnap = await getDoc(doc(db, 'users', uid));
         let sName = '';
         let sRoll = '21CS045';
-        let sCode = 'CS-8849';
+        let sCode = 'CS-4051';
 
         if (userSnap.exists()) {
           const data = userSnap.data();
@@ -153,7 +147,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
 
           sName = data.name || data.fullName || '';
           sRoll = data.rollNumber || '21CS045';
-          sCode = data.classCode || 'CS-8849';
+          sCode = data.classCode || 'CS-4051';
         }
 
         // Recover missing profile gracefully from Auth metadata if DB record is absent
@@ -216,12 +210,12 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
       const formattedCode = tokenInput.trim().toUpperCase();
 
       try {
-        // Validate batch existence in Firestore
+        // Strict Firestore Batch Code existence verification
         const batchSnap = await getDoc(doc(db, 'batches', formattedCode));
 
-        if (!batchSnap.exists() && formattedCode !== 'CS-8849') {
+        if (!batchSnap.exists()) {
           setIsStudentLoading(false);
-          showToast('error', `Class Code "${formattedCode}" not found. Please verify with your Coordinator.`, 'Invalid Class Code');
+          showToast('error', 'Invalid Batch Code! No active cohort found for this code. Contact your Class Coordinator.', 'Invalid Batch Code');
           return;
         }
 
@@ -326,8 +320,8 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         let cName = '';
         let cInst = 'Apex Inst. of Tech';
         let cBranch = 'Computer Science & Eng';
-        let cTerm = 'Sem VI';
-        let cCode = 'CS-8849';
+        let cTerm = 'Semester V';
+        let cCode = 'CS-4051';
 
         if (userSnap.exists()) {
           const data = userSnap.data();
@@ -359,7 +353,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           cName = data.name || data.fullName || '';
           cInst = data.institution || 'Apex Inst. of Tech';
           cBranch = data.branch || 'Computer Science & Eng';
-          cTerm = data.term || data.semester || 'Sem VI';
+          cTerm = data.semester || data.term || 'Semester V';
           if (data.classCode) cCode = data.classCode;
         }
 
@@ -439,7 +433,8 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           email: coordEmail.trim(),
           institution: institution.trim() || 'Apex Inst. of Tech',
           branch: branch.trim() || 'Computer Science & Eng',
-          term: semester.trim() || 'Sem VI',
+          semester: semester.trim() || 'Semester V',
+          term: semester.trim() || 'Semester V',
           role: 'coordinator',
           classCode: newCode,
           createdAt: serverTimestamp()
@@ -452,7 +447,8 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           coordinatorName: coordinatorName.trim(),
           institution: institution.trim() || 'Apex Inst. of Tech',
           branch: branch.trim() || 'Computer Science & Eng',
-          term: semester.trim() || 'Sem VI',
+          semester: semester.trim() || 'Semester V',
+          term: semester.trim() || 'Semester V',
           subjects: parsedSubjects || [],
           timetable: parsedTimetable || [],
           createdAt: serverTimestamp()
@@ -465,7 +461,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           fullName: coordinatorName.trim(),
           institution: institution.trim() || 'Apex Inst. of Tech',
           branch: branch.trim() || 'Computer Science & Eng',
-          semester: semester.trim() || 'Sem VI',
+          semester: semester.trim() || 'Semester V',
           classCode: newCode
         });
 
@@ -595,7 +591,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           email: teacherEmail.trim(),
           fullName: tName,
           department: tDept,
-          classCode: 'CS-8849'
+          classCode: 'CS-4051'
         });
 
         setTimeout(() => navigate('/dashboard'), 800);
@@ -888,14 +884,6 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
                         <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider">
                           6-Digit Class Code <span className="text-rose-500">*</span>
                         </label>
-                        <button
-                          type="button"
-                          onClick={handleCopyToken}
-                          className="flex items-center space-x-1 text-[#FF6B4B] hover:text-orange-600 font-mono text-xs font-bold"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>{copiedToken ? 'Applied!' : 'Try: CS-8849'}</span>
-                        </button>
                       </div>
 
                       <div className="relative">
@@ -907,7 +895,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
                           required
                           value={tokenInput}
                           onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
-                          placeholder="e.g. CS-8849"
+                          placeholder="e.g. CS-4051"
                           className="input-stealth w-full pl-11 pr-16 py-3.5 font-mono text-sm tracking-wider uppercase font-bold placeholder:text-neutral-400 text-neutral-900"
                         />
                         {tokenInput && (
@@ -1116,7 +1104,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
                         type="text"
                         value={semester}
                         onChange={(e) => setSemester(e.target.value)}
-                        placeholder="e.g. Sem VI"
+                        placeholder="e.g. Semester V"
                         className="input-stealth w-full px-4 py-3.5 font-mono text-xs placeholder:text-neutral-400 text-neutral-900"
                       />
                     </div>

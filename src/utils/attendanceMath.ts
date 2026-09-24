@@ -27,7 +27,7 @@ export function calculateStudentAttendanceStats(student: StudentDetail): Calcula
     return {
       totalAttended: 0,
       totalClasses: 0,
-      overallPercentage: 100,
+      overallPercentage: 0,
       subjects: []
     };
   }
@@ -35,7 +35,7 @@ export function calculateStudentAttendanceStats(student: StudentDetail): Calcula
   const calculatedSubjects: CalculatedSubjectStats[] = student.subjects.map((sub) => {
     const attended = Math.max(0, sub.attended);
     const total = Math.max(attended, sub.total);
-    const percentage = total > 0 ? Math.round((attended / total) * 1000) / 10 : 100;
+    const percentage = total > 0 ? Math.round((attended / total) * 1000) / 10 : 0;
 
     return {
       subjectCode: sub.subjectCode,
@@ -48,7 +48,7 @@ export function calculateStudentAttendanceStats(student: StudentDetail): Calcula
 
   const sumAttended = calculatedSubjects.reduce((acc, s) => acc + s.attended, 0);
   const sumTotal = calculatedSubjects.reduce((acc, s) => acc + s.total, 0);
-  const overallPercentage = sumTotal > 0 ? Math.round((sumAttended / sumTotal) * 1000) / 10 : 100;
+  const overallPercentage = sumTotal > 0 ? Math.round((sumAttended / sumTotal) * 1000) / 10 : 0;
 
   return {
     totalAttended: sumAttended,

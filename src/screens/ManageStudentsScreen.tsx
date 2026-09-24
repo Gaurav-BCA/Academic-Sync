@@ -91,7 +91,7 @@ export const ManageStudentsScreen: React.FC = () => {
         subjectName: s.name || s.subject || 'Class Subject',
         attended: 0,
         total: 0,
-        percentage: 100
+        percentage: 0
       }));
     }
     if (batchData?.timetable && Array.isArray(batchData.timetable)) {
@@ -106,7 +106,7 @@ export const ManageStudentsScreen: React.FC = () => {
                 subjectName: slot.subject || slot.name || slot.subjectName || 'Class Subject',
                 attended: 0,
                 total: 0,
-                percentage: 100
+                percentage: 0
               });
             }
           });
@@ -115,11 +115,11 @@ export const ManageStudentsScreen: React.FC = () => {
       if (map.size > 0) return Array.from(map.values());
     }
     return [
-      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 100 },
-      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 100 }
+      { subjectCode: 'BCA 512', subjectName: 'Java Programming', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 513', subjectName: 'Computer Graphics', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 514', subjectName: 'Software Engineering', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 515', subjectName: 'Web Technologies', attended: 0, total: 0, percentage: 0 },
+      { subjectCode: 'BCA 516', subjectName: 'Database Management Systems', attended: 0, total: 0, percentage: 0 }
     ];
   }, [batchData]);
 
