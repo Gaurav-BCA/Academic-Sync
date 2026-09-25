@@ -29,6 +29,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
 import { calculateStudentAttendanceStats } from '../utils/attendanceMath';
+import { EditTimetableModal } from '../components/EditTimetableModal';
 
 const LS_STUDENTS_KEY = 'academicsync_managedStudents';
 const LS_AUDIT_KEY = 'academicsync_auditLogs';
@@ -72,6 +73,7 @@ export const ManageStudentsScreen: React.FC = () => {
   const [reasonError, setReasonError] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showAuditLogsView, setShowAuditLogsView] = useState(false);
+  const [isTimetableModalOpen, setIsTimetableModalOpen] = useState(false);
 
   // Date Accordion expansion state
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
@@ -424,6 +426,15 @@ export const ManageStudentsScreen: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => setIsTimetableModalOpen(true)}
+            className="px-4 py-2 rounded-full text-xs font-semibold bg-purple-700 hover:bg-purple-800 text-white shadow-md shadow-purple-900/20 flex items-center space-x-2 transition-all"
+          >
+            <Calendar className="w-4 h-4 text-purple-200" />
+            <span>Edit Timetable</span>
+          </button>
+
           <button
             onClick={() => setShowAuditLogsView(!showAuditLogsView)}
             className={`px-4 py-2 rounded-full text-xs font-semibold flex items-center space-x-2 transition-all ${
@@ -1001,6 +1012,15 @@ export const ManageStudentsScreen: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Timetable Management Engine Modal */}
+      <EditTimetableModal
+        isOpen={isTimetableModalOpen}
+        onClose={() => setIsTimetableModalOpen(false)}
+        classCode={currentBatchCode}
+        existingTimetable={batchData?.timetable}
+        onSaveSuccess={(msg) => setToastMessage(msg)}
+      />
 
     </div>
   );

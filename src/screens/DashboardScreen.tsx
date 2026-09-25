@@ -37,6 +37,7 @@ import { TIMETABLE_MATRIX } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
 import { useActiveLectureSlot } from '../hooks/useActiveLectureSlot';
+import { EditTimetableModal } from '../components/EditTimetableModal';
 
 interface DashboardScreenProps {}
 
@@ -102,6 +103,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
   const isTeacher = userRole === 'teacher';
   const isCoordinator = userRole === 'coordinator';
+
+  // Timetable Editor Modal State
+  const [isTimetableModalOpen, setIsTimetableModalOpen] = useState<boolean>(false);
 
   // Teacher Department & Selected Batch Discovery State
   const teacherDepartment = (userProfile?.department || teacherProfile?.department || 'BCA').toUpperCase();
@@ -1069,6 +1073,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
               <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono">
                 <button
+                  type="button"
+                  onClick={() => setIsTimetableModalOpen(true)}
+                  className="px-5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-full font-mono uppercase font-bold text-xs flex items-center space-x-2 shadow-md shadow-purple-900/20 transition-all"
+                >
+                  <Calendar className="w-4 h-4 text-purple-200" />
+                  <span>EDIT & UPDATE TIMETABLE</span>
+                </button>
+
+                <button
                   onClick={() => navigate('/manage')}
                   className="px-5 py-2.5 bg-[#FF6B4B] hover:bg-[#FF5533] text-white rounded-full font-mono uppercase font-bold text-xs flex items-center space-x-2 shadow-md shadow-orange-500/20 transition-all"
                 >
@@ -1634,6 +1647,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
       {/* 5. FULL WEEKLY TIMETABLE — Collapsible */}
       <TimetableSection />
+
+      {/* Timetable Management Engine Modal */}
+      <EditTimetableModal
+        isOpen={isTimetableModalOpen}
+        onClose={() => setIsTimetableModalOpen(false)}
+        classCode={activeClassCode}
+        existingTimetable={batchData?.timetable}
+        onSaveSuccess={(msg) => setGeoToast(msg)}
+      />
 
     </div>
   );
