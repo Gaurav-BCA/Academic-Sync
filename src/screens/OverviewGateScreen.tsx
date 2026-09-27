@@ -125,21 +125,38 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         const uid = userCred.user.uid;
 
         // Retrieve student profile from Firestore users/{uid}
-        const userSnap = await getDoc(doc(db, 'users', uid));
+        let userSnap = await getDoc(doc(db, 'users', uid));
 
-        // STRICT FIRESTORE PROFILE & APPROVAL GUARD FOR STUDENT GATE
-        if (!userSnap.exists() || userSnap.data()?.status === 'REJECTED' || userSnap.data()?.approvalStatus === 'rejected') {
+        // Self-heal Firestore profile if doc does not exist
+        if (!userSnap.exists()) {
+          const defaultName = studentEmail.split('@')[0];
+          await setDoc(doc(db, 'users', uid), {
+            uid,
+            name: defaultName,
+            fullName: defaultName,
+            email: studentEmail.trim(),
+            rollNumber: '21CS045',
+            classCode: 'CS-4051',
+            role: 'student',
+            createdAt: serverTimestamp()
+          }, { merge: true });
+          userSnap = await getDoc(doc(db, 'users', uid));
+        }
+
+        const data = userSnap.data();
+
+        // STRICT REJECTION GUARD FOR STUDENT GATE
+        if (data?.status === 'REJECTED' || data?.approvalStatus === 'rejected') {
           await auth.signOut();
           resetOnboarding();
           setIsStudentSignIn(true);
           setStudentPassword('');
-          showToast('error', 'Account credentials not found in database or pending approval. Access denied.', 'Access Denied');
+          showToast('error', 'Account registration rejected. Access denied.', 'Access Denied');
           setIsStudentLoading(false);
           return;
         }
 
-        const data = userSnap.data();
-        const registeredRole = data.role;
+        const registeredRole = data?.role;
 
         // STRICT ROLE GUARD FOR STUDENT GATE
         if (registeredRole && registeredRole !== 'student') {
@@ -152,9 +169,9 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           return;
         }
 
-        const sName = data.name || data.fullName || userCred.user.displayName || 'Student';
-        const sRoll = data.rollNumber || '21CS045';
-        const sCode = data.classCode || 'CS-4051';
+        const sName = data?.name || data?.fullName || userCred.user.displayName || 'Student';
+        const sRoll = data?.rollNumber || '21CS045';
+        const sCode = data?.classCode || 'CS-4051';
 
         showToast('success', `Welcome back, ${sName}! Signed in successfully.`);
         completeOnboarding('student', {
@@ -210,14 +227,34 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           return;
         }
 
-        // Firebase Auth Create User
-        const userCred = await createUserWithEmailAndPassword(auth, studentEmail.trim(), studentPassword.trim());
-        const uid = userCred.user.uid;
+        let uid = '';
+        try {
+          // Firebase Auth Create User
+          const userCred = await createUserWithEmailAndPassword(auth, studentEmail.trim(), studentPassword.trim());
+          uid = userCred.user.uid;
+        } catch (authErr: any) {
+          if (authErr.code === 'auth/email-already-in-use') {
+            try {
+              // Sign in existing Auth user and attach Firestore student profile
+              const userCred = await signInWithEmailAndPassword(auth, studentEmail.trim(), studentPassword.trim());
+              uid = userCred.user.uid;
+            } catch (signInErr: any) {
+              console.error('Sign-in for existing Auth email failed:', signInErr);
+              showToast('info', 'An account already exists for this email. Switched to Sign In mode.', 'Account Exists');
+              setIsStudentSignIn(true);
+              setIsStudentLoading(false);
+              return;
+            }
+          } else {
+            throw authErr;
+          }
+        }
 
         // Save doc to Firestore users/{uid}
         await setDoc(doc(db, 'users', uid), {
           uid,
           name: fullName.trim(),
+          fullName: fullName.trim(),
           rollNumber: rollNumber.trim(),
           email: studentEmail.trim(),
           classCode: formattedCode,
@@ -237,12 +274,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         setTimeout(() => navigate('/dashboard'), 800);
       } catch (err: any) {
         console.error('Student sign-up error:', err);
-        if (err.code === 'auth/email-already-in-use') {
-          showToast('info', 'An account already exists for this email. Switched to Sign In mode.', 'Account Exists');
-          setIsStudentSignIn(true);
-        } else {
-          showToast('error', err.message || 'Registration failed. Please check your inputs.', 'Registration Error');
-        }
+        showToast('error', err.message || 'Registration failed. Please check your inputs.', 'Registration Error');
       } finally {
         setIsStudentLoading(false);
       }
@@ -260,6 +292,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
 
   const handleAutoParseTimetable = async () => {
     if (!selectedFile) {
+      showToast('error', 'Failed to parse timetable. Please ensure a clear timetable PDF/Image is uploaded.', 'File Required');
       fileInputRef.current?.click();
       return;
     }
@@ -270,14 +303,10 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
       setParsedSubjects(result.subjects);
       setParsedTimetable(result.timetable);
       setIsReviewModalOpen(true);
-      if (result.isFallback) {
-        showToast('info', 'Gemini API unavailable (403/Quota). Loaded standard timetable OCR fallback parser.', 'OCR Fallback Parser');
-      } else {
-        showToast('success', 'AI Timetable OCR completed! Please review and verify the schedule.', 'Timetable Parsed');
-      }
+      showToast('success', 'AI Timetable OCR completed! Please review and verify the schedule.', 'Timetable Parsed');
     } catch (err: any) {
-      console.error('Gemini API OCR error:', err);
-      showToast('error', err.message || 'AI Parsing Failed — Please upload a clear timetable PDF or Image document and retry.', 'AI Parsing Failed');
+      console.error('Gemini OCR Error:', err);
+      showToast('error', err.message || 'Failed to parse timetable. Please ensure a clear timetable PDF/Image is uploaded.', 'AI Parsing Failed');
     } finally {
       setIsParsing(false);
     }
@@ -354,9 +383,9 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
             return;
           }
 
-          cName = data.name || data.fullName || '';
+          cName = data.fullName || data.name || '';
           cInst = data.institution || 'Apex Inst. of Tech';
-          cBranch = data.branch || 'Computer Science & Eng';
+          cBranch = data.department || data.branch || 'Computer Science & Eng';
           cTerm = data.semester || data.term || 'Semester V';
           if (data.classCode) cCode = data.classCode;
         }
@@ -376,13 +405,17 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           cName = userCred.user.displayName?.trim() || deriveNameFromEmail(coordEmail.trim(), 'Class Coordinator');
           await setDoc(doc(db, 'users', uid), {
             uid,
+            fullName: cName,
             name: cName,
             email: coordEmail.trim(),
             institution: cInst,
+            department: cBranch,
             branch: cBranch,
+            semester: cTerm,
             term: cTerm,
             classCode: cCode,
             role: 'coordinator',
+            approvalStatus: 'approved',
             createdAt: serverTimestamp()
           }, { merge: true });
         }
@@ -423,36 +456,57 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         return;
       }
 
-      const newCode = "CS-" + Math.floor(1000 + Math.random() * 9000);
+      const newCode = _generatedClassCode || ("CS-" + Math.floor(1000 + Math.random() * 9000));
       setGeneratedClassCode(newCode);
 
       try {
-        const userCred = await createUserWithEmailAndPassword(auth, coordEmail.trim(), coordPassword.trim());
-        const uid = userCred.user.uid;
+        let uid = auth.currentUser?.uid;
+        if (!uid) {
+          try {
+            const userCred = await createUserWithEmailAndPassword(auth, coordEmail.trim(), coordPassword.trim());
+            uid = userCred.user.uid;
+          } catch (authErr: any) {
+            if (authErr.code === 'auth/email-already-in-use') {
+              const userCred = await signInWithEmailAndPassword(auth, coordEmail.trim(), coordPassword.trim());
+              uid = userCred.user.uid;
+            } else {
+              throw authErr;
+            }
+          }
+        }
 
-        // Write user doc users/{uid}
+        const deptName = branch.trim() || 'Computer Science & Eng';
+        const semName = semester.trim() || 'Semester V';
+        const instName = institution.trim() || 'Apex Inst. of Tech';
+
+        // Write Coordinator Profile to Firestore: users/{uid}
         await setDoc(doc(db, 'users', uid), {
           uid,
+          fullName: coordinatorName.trim(),
           name: coordinatorName.trim(),
           email: coordEmail.trim(),
-          institution: institution.trim() || 'Apex Inst. of Tech',
-          branch: branch.trim() || 'Computer Science & Eng',
-          semester: semester.trim() || 'Semester V',
-          term: semester.trim() || 'Semester V',
           role: 'coordinator',
+          institution: instName,
+          department: deptName,
+          branch: deptName,
+          semester: semName,
+          term: semName,
+          approvalStatus: 'approved',
           classCode: newCode,
           createdAt: serverTimestamp()
         }, { merge: true });
 
-        // Write batch doc batches/{classCode} with EXACT Gemini parsed JSON
+        // Save batch doc batches/{classCode} with EXACT required structure:
+        // { classCode, department, semester, institution, coordinatorUid, timetable: <AI_PARSED_JSON>, createdAt: serverTimestamp() }
         await setDoc(doc(db, 'batches', newCode), {
           classCode: newCode,
+          department: deptName,
+          branch: deptName,
+          semester: semName,
+          term: semName,
+          institution: instName,
           coordinatorUid: uid,
           coordinatorName: coordinatorName.trim(),
-          institution: institution.trim() || 'Apex Inst. of Tech',
-          branch: branch.trim() || 'Computer Science & Eng',
-          semester: semester.trim() || 'Semester V',
-          term: semester.trim() || 'Semester V',
           subjects: parsedSubjects || [],
           timetable: parsedTimetable || [],
           createdAt: serverTimestamp()
@@ -463,9 +517,10 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           uid,
           email: coordEmail.trim(),
           fullName: coordinatorName.trim(),
-          institution: institution.trim() || 'Apex Inst. of Tech',
-          branch: branch.trim() || 'Computer Science & Eng',
-          semester: semester.trim() || 'Semester V',
+          institution: instName,
+          department: deptName,
+          branch: deptName,
+          semester: semName,
           classCode: newCode
         });
 
@@ -473,12 +528,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         setTimeout(() => navigate('/dashboard'), 800);
       } catch (err: any) {
         console.error('Coordinator sign-up error:', err);
-        if (err.code === 'auth/email-already-in-use') {
-          showToast('info', 'An account already exists for this email. Switched to Sign In mode.', 'Account Exists');
-          setIsCoordSignIn(true);
-        } else {
-          showToast('error', err.message || 'Failed to initialize coordinator batch.', 'Setup Error');
-        }
+        showToast('error', err.message || 'Failed to initialize coordinator batch.', 'Setup Error');
       } finally {
         setIsCoordSubmitting(false);
       }

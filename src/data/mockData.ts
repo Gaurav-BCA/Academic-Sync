@@ -22,7 +22,7 @@ export interface TimetableSlot {
   faculty: string;
   room: string;
   type: 'Lecture' | 'Laboratory' | 'Seminar' | 'Free';
-  statusTag?: string; // e.g. "Safe: 3 cyc", "Critical: 1 cyc"
+  statusTag?: string;
   statusType?: 'safe' | 'critical' | 'optional';
 }
 
@@ -61,43 +61,7 @@ export interface ReconciliationRecord {
 }
 
 export const INITIAL_SUBJECTS: SubjectTelemetry[] = [];
-
 export const TIMETABLE_MATRIX: TimetableSlot[] = [];
-
 export const TODAY_SEQUENCE: TodaySequenceItem[] = [];
-
-export const LEADERBOARD_DATA: LeaderboardNode[] = [
-  {
-    rank: 1,
-    name: 'Gaurav Bisht',
-    isCurrentUser: true,
-    rollNumber: '21CS045',
-    trustScore: 98.2,
-    accuracyPct: 99.8,
-    accuracyTrend: 0.8,
-    votesCount: 142,
-    tier: 'Tier 1'
-  },
-  {
-    rank: 2,
-    name: 'Priya Sharma',
-    rollNumber: '21CS012',
-    trustScore: 97.5,
-    accuracyPct: 99.1,
-    accuracyTrend: 1.2,
-    votesCount: 138,
-    tier: 'Tier 1'
-  },
-  {
-    rank: 3,
-    name: 'David Chen',
-    rollNumber: '21CS018',
-    trustScore: 96.8,
-    accuracyPct: 98.4,
-    accuracyTrend: 0.0,
-    votesCount: 129,
-    tier: 'Tier 1'
-  }
-];
-
+export const LEADERBOARD_DATA: LeaderboardNode[] = [];
 export const RECONCILIATION_LEDS: ReconciliationRecord[] = [];

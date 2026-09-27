@@ -36,7 +36,7 @@ import {
 import { TIMETABLE_MATRIX } from '../data/mockData';
 import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
-import { useActiveLectureSlot } from '../hooks/useActiveLectureSlot';
+import { useActiveLectureSlot, parseSlotTimeRange } from '../hooks/useActiveLectureSlot';
 import { EditTimetableModal } from '../components/EditTimetableModal';
 
 interface DashboardScreenProps {}
@@ -215,51 +215,53 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   };
 
   // Real-time Firestore Department Batch Query
+  // Real-time Firestore Department Batch Query & Auto-Discovery
   useEffect(() => {
     if (!isTeacher) return;
 
     const batchesRef = collection(db, 'batches');
     const unsubscribe = onSnapshot(batchesRef, (snapshot) => {
+      if (snapshot.empty) {
+        setTeacherBatches([]);
+        setLoadingTeacherBatches(false);
+        return;
+      }
+
       const list: any[] = [];
       snapshot.forEach(docSnap => {
         const data = docSnap.data();
-        const bDept = (data.department || data.branch || '').toUpperCase();
-        if (!teacherDepartment || bDept.includes(teacherDepartment) || teacherDepartment.includes(bDept) || data.classCode === selectedTeacherBatchCode) {
-          list.push({
-            id: docSnap.id,
-            classCode: data.classCode || docSnap.id,
-            department: bDept || teacherDepartment,
-            term: data.term || data.semester || '5th Sem',
-            coordinatorName: data.coordinatorName || 'Prof. S. Chakrabarti',
-            institution: data.institution || 'Apex Inst. of Tech',
-            timetable: data.timetable || []
-          });
-        }
+        const bDept = (data.department || data.branch || '').trim();
+        list.push({
+          id: docSnap.id,
+          classCode: data.classCode || docSnap.id,
+          department: bDept || 'Department',
+          term: data.term || data.semester || 'Semester',
+          coordinatorName: data.coordinatorName || data.coordinator || 'Class Coordinator',
+          institution: data.institution || 'Academic Institution',
+          timetable: data.timetable || []
+        });
       });
-
-      // Default fallback batch cards for teacher department
-      if (list.length === 0) {
-        list.push(
-          { id: 'CS-4051', classCode: 'CS-4051', department: teacherDepartment, term: '5th Sem', coordinatorName: 'Prof. S. Chakrabarti', institution: 'Apex Inst. of Tech', timetable: [] },
-          { id: 'CS-4052', classCode: 'CS-4052', department: teacherDepartment, term: '3rd Sem', coordinatorName: 'Dr. M. Roy', institution: 'Apex Inst. of Tech', timetable: [] },
-          { id: 'CS-8849', classCode: 'CS-8849', department: teacherDepartment, term: '6th Sem', coordinatorName: 'Prof. S. Chakrabarti', institution: 'Apex Inst. of Tech', timetable: [] }
-        );
-      }
 
       setTeacherBatches(list);
       setLoadingTeacherBatches(false);
+
+      // Auto-select first active batch if current selection is invalid or missing from Firestore
+      if (list.length > 0) {
+        const isValidCurrent = list.some(b => b.classCode === selectedTeacherBatchCode);
+        if (!isValidCurrent) {
+          const firstActive = list[0];
+          setSelectedTeacherBatchCodeState(firstActive.classCode);
+          updateUserProfile({ classCode: firstActive.classCode, department: firstActive.department });
+        }
+      }
     }, (err) => {
       console.warn("Error querying teacher department batches:", err);
-      setTeacherBatches([
-        { id: 'CS-4051', classCode: 'CS-4051', department: teacherDepartment, term: '5th Sem', coordinatorName: 'Prof. S. Chakrabarti', institution: 'Apex Inst. of Tech' },
-        { id: 'CS-4052', classCode: 'CS-4052', department: teacherDepartment, term: '3rd Sem', coordinatorName: 'Dr. M. Roy', institution: 'Apex Inst. of Tech' },
-        { id: 'CS-8849', classCode: 'CS-8849', department: teacherDepartment, term: '6th Sem', coordinatorName: 'Prof. S. Chakrabarti', institution: 'Apex Inst. of Tech' }
-      ]);
+      setTeacherBatches([]);
       setLoadingTeacherBatches(false);
     });
 
     return () => unsubscribe();
-  }, [isTeacher, userRole, teacherDepartment, selectedTeacherBatchCode]);
+  }, [isTeacher, userRole, teacherDepartment, selectedTeacherBatchCode, updateUserProfile]);
 
   // Real-time slot status override map from Firestore daily_schedules
   const [slotStatusMap, setSlotStatusMap] = useState<Record<string, { status: string; updatedBy?: string; note?: string; eventNote?: string }>>({});
@@ -596,26 +598,46 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
     if (!todayTimetable || !Array.isArray(todayTimetable) || todayTimetable.length === 0) {
       return [];
     }
+
+    const nowObj = new Date();
+    const currentMins = nowObj.getHours() * 60 + nowObj.getMinutes();
+
     return todayTimetable.map((slot: any, idx: number) => {
       const slotId = slot.id || `slot-${idx}`;
       const codeKey = slot.code || slot.subjectCode || '';
       const override = slotStatusMap[slotId] || slotStatusMap[codeKey];
 
-      const computedStatus = override?.status || slot.status || 'Upcoming';
+      const slotTimeStr = slot.time || slot.timeSlot || 'Routine Slot';
+      const range = parseSlotTimeRange(slotTimeStr);
+
+      let computedStatus = override?.status || slot.status;
+      if (!computedStatus || computedStatus === 'Upcoming' || computedStatus === 'upcoming') {
+        if (range) {
+          if (currentMins < range.startMins) {
+            computedStatus = 'Upcoming';
+          } else if (currentMins >= range.startMins && currentMins <= range.endMins) {
+            computedStatus = 'Ongoing';
+          } else {
+            computedStatus = 'Completed';
+          }
+        } else {
+          computedStatus = 'Upcoming';
+        }
+      }
 
       return {
         id: slotId,
-        time: slot.time || '09:00 AM - 10:00 AM',
-        room: slot.room || slot.location || 'LH-302',
-        subjectCode: codeKey || 'BCA-512',
+        time: slotTimeStr,
+        room: slot.room || slot.location || 'Lecture Hall',
+        subjectCode: codeKey || 'N/A',
         subjectName: slot.subject || slot.name || slot.subjectName || 'Class Session',
-        faculty: slot.faculty || 'Faculty Instructor',
+        faculty: slot.faculty || slot.teacher || slot.instructor || 'Faculty Instructor',
         status: computedStatus,
         statusText: override ? `Updated by ${override.updatedBy || 'Faculty'}` : slot.statusText || 'Parsed Batch Routine',
         subText: override?.eventNote || override?.note || slot.subText || ''
       };
     });
-  }, [todayTimetable, slotStatusMap]);
+  }, [todayTimetable, slotStatusMap, currentTimeStr]);
 
   // Hook for dynamic time-slot detection
   const { activeSlot: realTimeActiveSlot, isSlotActive, activeBadgeText } = useActiveLectureSlot(scheduleItems);
@@ -769,43 +791,51 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {teacherBatches.map((b) => (
-                  <div
-                    key={b.id || b.classCode}
-                    onClick={() => selectBatchHandler(b.classCode, b.department)}
-                    className="bg-white border border-purple-200 hover:border-purple-400 rounded-2xl p-5 space-y-3 cursor-pointer transition-all hover:shadow-md group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono font-bold bg-purple-50 text-purple-800 px-3 py-1 rounded-full border border-purple-200">
-                        {b.classCode}
-                      </span>
-                      <span className="text-[10px] font-mono text-neutral-500 uppercase font-semibold">
-                        {b.term}
-                      </span>
-                    </div>
-
-                    <div>
-                      <h4 className="font-jakarta font-bold text-neutral-900 text-base group-hover:text-purple-700 transition-colors">
-                        Batch {b.classCode} — {b.department}
-                      </h4>
-                      <p className="text-xs text-neutral-500 font-mono mt-0.5">
-                        📍 {b.institution} • {b.coordinatorName}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        selectBatchHandler(b.classCode, b.department);
-                      }}
-                      className="w-full py-2 bg-purple-50 group-hover:bg-purple-600 text-purple-700 group-hover:text-white rounded-xl text-xs font-mono font-bold uppercase transition-colors text-center"
+              {teacherBatches.length === 0 ? (
+                <div className="bg-purple-50/50 border border-purple-200/80 rounded-2xl p-8 text-center space-y-2 font-mono text-xs text-neutral-500">
+                  <Building className="w-8 h-8 text-purple-400 mx-auto" />
+                  <p className="font-bold text-neutral-800 text-sm">No active batches found for {teacherDepartment} Department.</p>
+                  <p className="text-[11px] text-neutral-500">When a Class Coordinator initializes a batch code for this department in Firestore, it will automatically appear here.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {teacherBatches.map((b) => (
+                    <div
+                      key={b.id || b.classCode}
+                      onClick={() => selectBatchHandler(b.classCode, b.department)}
+                      className="bg-white border border-purple-200 hover:border-purple-400 rounded-2xl p-5 space-y-3 cursor-pointer transition-all hover:shadow-md group"
                     >
-                      Launch Batch Controls
-                    </button>
-                  </div>
-                ))}
-              </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold bg-purple-50 text-purple-800 px-3 py-1 rounded-full border border-purple-200">
+                          {b.classCode}
+                        </span>
+                        <span className="text-[10px] font-mono text-neutral-500 uppercase font-semibold">
+                          {b.term}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="font-jakarta font-bold text-neutral-900 text-base group-hover:text-purple-700 transition-colors">
+                          Batch {b.classCode} — {b.department}
+                        </h4>
+                        <p className="text-xs text-neutral-500 font-mono mt-0.5">
+                          📍 {b.institution} • {b.coordinatorName}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          selectBatchHandler(b.classCode, b.department);
+                        }}
+                        className="w-full py-2 bg-purple-50 group-hover:bg-purple-600 text-purple-700 group-hover:text-white rounded-xl text-xs font-mono font-bold uppercase transition-colors text-center"
+                      >
+                        Launch Batch Controls
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1233,16 +1263,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
               <div className="animate-pulse bg-amber-100/60 border border-amber-200/60 rounded-2xl h-20 p-4" />
             </div>
           ) : scheduleItems.length === 0 ? (
-            <div className="bg-amber-50/60 border border-amber-200/80 rounded-3xl py-10 px-8 sm:px-10 text-center space-y-4 shadow-xs">
-              <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-xs">
-                <Calendar className="w-6 h-6" />
+            <div className="p-6 bg-amber-50/50 border border-amber-200/80 rounded-2xl text-center text-amber-800 font-medium space-y-2 shadow-xs">
+              <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+                <Calendar className="w-5 h-5" />
               </div>
-              <div className="space-y-1">
-                <h3 className="font-jakarta font-bold text-neutral-900 text-lg">No Classes Scheduled For Today</h3>
-                <p className="text-xs font-mono text-neutral-500 max-w-md mx-auto leading-relaxed">
-                  No lectures or laboratory sessions are listed in the {activeClassCode} batch timetable for {currentDayFull}.
-                </p>
-              </div>
+              <h3 className="font-jakarta font-bold text-amber-900 text-base">
+                No Classes Scheduled Today ({currentDayFull})
+              </h3>
+              <p className="text-xs font-mono text-amber-700/90 max-w-md mx-auto leading-relaxed">
+                {new Date().getDay() === 0 || currentDayCode === 'Sun'
+                  ? "Sunday Off / Holiday. Enjoy your weekend!"
+                  : `No lectures or laboratory sessions are listed in the ${activeClassCode} batch timetable for ${currentDayFull}.`}
+              </p>
             </div>
           ) : (
             scheduleItems.map((item: any) => {
@@ -1343,8 +1375,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                 <div className="animate-pulse bg-amber-50/80 border border-amber-200/70 rounded-2xl h-40 p-6 space-y-3" />
               </>
             ) : subjects.length === 0 ? (
-              <div className="col-span-2 text-center py-10 bg-amber-50/40 border border-amber-200/60 rounded-2xl text-xs font-mono text-neutral-500">
-                No subjects recorded for batch <strong className="text-neutral-900">{activeClassCode}</strong> in Firestore.
+              <div className="col-span-2 p-6 bg-amber-50/50 rounded-2xl text-center text-amber-800 font-medium">
+                No Enrolled Subjects Found for Batch {activeClassCode}
               </div>
             ) : (
               subjects.map((sub) => {

@@ -9,6 +9,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
   doc, 
   getDoc,
+  getDocs,
   collection,
   onSnapshot
 } from 'firebase/firestore';
@@ -189,7 +190,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loadingBatchData, setLoadingBatchData] = useState<boolean>(true);
 
   // Reconciliation records state
-  const [reconciliationRecords, setReconciliationRecords] = useState<ReconciliationRecord[]>(RECONCILIATION_LEDS);
+  const [reconciliationRecords, setReconciliationRecords] = useState<ReconciliationRecord[]>([]);
   const [submittedCorrectionIds, setSubmittedCorrectionIds] = useState<string[]>(() => {
     try {
       const stored = localStorage.getItem(LS_KEY_RECON_SUBMISSIONS);
@@ -209,8 +210,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLoadingBatchData(true);
     const batchDocRef = doc(db, "batches", classCode);
 
-    const extractTodaySlots = (timetableData: any[]): any[] => {
-      if (!timetableData || !Array.isArray(timetableData) || timetableData.length === 0) {
+    const extractTodaySlots = (timetableData: any): any[] => {
+      if (!timetableData) {
         return [];
       }
 
@@ -226,25 +227,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const currentFull = daysFull[currentDayIdx].toLowerCase();
       const currentShort = daysShort[currentDayIdx].toLowerCase();
 
-      // Case 1: Structured as Day objects [{ day: "Monday", slots: [...] }]
-      const dayObj = timetableData.find((item: any) =>
-        item && item.day && (item.day.toLowerCase() === currentFull || item.day.toLowerCase() === currentShort)
-      );
-
-      if (dayObj && Array.isArray(dayObj.slots)) {
-        return dayObj.slots;
+      // Case 1: Structured as Day Keyed Object { Mon: [...], Tue: [...], Monday: [...] }
+      if (typeof timetableData === 'object' && !Array.isArray(timetableData)) {
+        for (const key of Object.keys(timetableData)) {
+          const lowerKey = key.toLowerCase();
+          if (lowerKey === currentFull || lowerKey === currentShort) {
+            return Array.isArray(timetableData[key]) ? timetableData[key] : [];
+          }
+        }
+        return [];
       }
 
-      // Case 2: Structured as Flat slots [{ day: "Monday", time: "...", subject: "..." }]
-      const flatSlots = timetableData.filter((item: any) =>
-        item && item.day && (item.day.toLowerCase() === currentFull || item.day.toLowerCase() === currentShort)
-      );
+      // Case 2: Structured as Array of Day objects [{ day: "Monday", slots: [...] }] or flat slots
+      if (Array.isArray(timetableData)) {
+        const dayObj = timetableData.find((item: any) =>
+          item && item.day && (item.day.toLowerCase() === currentFull || item.day.toLowerCase() === currentShort)
+        );
 
-      if (flatSlots.length > 0) {
-        return flatSlots;
+        if (dayObj && Array.isArray(dayObj.slots)) {
+          return dayObj.slots;
+        }
+
+        const flatSlots = timetableData.filter((item: any) =>
+          item && item.day && (item.day.toLowerCase() === currentFull || item.day.toLowerCase() === currentShort)
+        );
+
+        if (flatSlots.length > 0) {
+          return flatSlots;
+        }
       }
 
-      // If no matching day slots found for today, return empty array
       return [];
     };
 
@@ -252,7 +264,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (snapshot.exists()) {
         const data = snapshot.data();
         setBatchData(data);
-        if (data.timetable && Array.isArray(data.timetable)) {
+        if (data.timetable) {
           const slots = extractTodaySlots(data.timetable);
           setTodayTimetable(slots);
         } else {
@@ -260,19 +272,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // Dynamically map subjects from batchData if available
-        const rawSubs = data.subjects || (Array.isArray(data.timetable) ? data.timetable.flatMap((d: any) => d.slots || []).filter((s: any) => s.code) : []);
+        let rawSubs: any[] = [];
+        if (Array.isArray(data.subjects) && data.subjects.length > 0) {
+          rawSubs = data.subjects;
+        } else if (data.timetable) {
+          if (Array.isArray(data.timetable)) {
+            rawSubs = data.timetable.flatMap((d: any) => 
+              Array.isArray(d.slots) ? d.slots : (d.code || d.subjectCode || d.subject ? [d] : [])
+            );
+          } else if (typeof data.timetable === 'object') {
+            Object.values(data.timetable).forEach((val: any) => {
+              if (Array.isArray(val)) {
+                rawSubs.push(...val);
+              }
+            });
+          }
+        }
+
         if (Array.isArray(rawSubs) && rawSubs.length > 0) {
           const uniqueMap = new Map<string, any>();
           rawSubs.forEach((s: any) => {
-            const code = s.code || s.subjectCode;
+            const code = s.code || s.subjectCode || s.subject;
             if (code && !uniqueMap.has(code)) {
               uniqueMap.set(code, s);
             }
           });
           const dynamicSubs: SubjectTelemetry[] = Array.from(uniqueMap.values()).map((s: any, idx: number) => {
-            const code = s.code || s.subjectCode || `SUB-${idx + 1}`;
+            const code = s.code || s.subjectCode || s.subject || `SUB-${idx + 1}`;
             const name = s.name || s.subject || s.subjectName || 'Class Subject';
-            const faculty = s.faculty || 'Faculty Instructor';
+            const faculty = s.faculty || s.teacher || s.instructor || 'Faculty Instructor';
             const attended = 0;
             const total = 0;
             const percentage = 0;
@@ -296,11 +324,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setSubjects(dynamicSubs);
           }
         }
+        setLoadingBatchData(false);
       } else {
-        setBatchData(null);
-        setTodayTimetable([]);
+        // If classCode does not exist in Firestore batches, auto-discover first active batch in collection
+        getDocs(collection(db, 'batches')).then(batchSnaps => {
+          if (!batchSnaps.empty) {
+            const firstDoc = batchSnaps.docs[0];
+            const activeCode = firstDoc.data().classCode || firstDoc.id;
+            if (activeCode && activeCode !== classCode) {
+              console.log('[AppContext] Auto-discovered active Firestore batch:', activeCode);
+              setSelectedBatchState(activeCode);
+              return;
+            }
+          }
+          setBatchData(null);
+          setTodayTimetable([]);
+          setLoadingBatchData(false);
+        }).catch(() => {
+          setBatchData(null);
+          setTodayTimetable([]);
+          setLoadingBatchData(false);
+        });
       }
-      setLoadingBatchData(false);
     }, (err) => {
       console.warn("Firestore batch listener notice:", err);
       setTodayTimetable([]);

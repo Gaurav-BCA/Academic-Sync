@@ -210,29 +210,10 @@ export const EditTimetableModal: React.FC<EditTimetableModalProps> = ({
       }
     }
 
-    // Populate default samples for empty days to assist user onboarding
+    // Initialize empty days as empty arrays []
     WEEKDAYS.forEach((day) => {
-      if (!initialMap[day] || initialMap[day].length === 0) {
-        if (day === 'Saturday') {
-          initialMap[day] = [
-            {
-              id: `slot-sat-1`,
-              time: '09:00 AM - 11:00 AM',
-              subject: 'Project Colloquium & Seminar',
-              subjectName: 'Project Colloquium & Seminar',
-              code: 'BCA 518',
-              subjectCode: 'BCA 518',
-              faculty: 'Prof. S. Chakrabarti',
-              room: 'Seminar Hall 1',
-              type: 'Seminar'
-            }
-          ];
-        } else {
-          initialMap[day] = DEFAULT_SLOTS_SAMPLE.map((s, idx) => ({
-            ...s,
-            id: `slot-${day}-${idx}-${Date.now()}`
-          }));
-        }
+      if (!initialMap[day]) {
+        initialMap[day] = [];
       }
     });
 

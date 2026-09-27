@@ -25,7 +25,7 @@ import {
   INITIAL_BATCH_STUDENTS 
 } from '../data/manageStudentsData';
 import { db } from '../services/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
 import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
 import { calculateStudentAttendanceStats } from '../utils/attendanceMath';
@@ -39,25 +39,11 @@ export const ManageStudentsScreen: React.FC = () => {
   const { coordinatorProfile } = useOnboarding();
   const currentBatchCode = selectedBatch || userProfile?.classCode || batchData?.classCode || coordinatorProfile?.classCode || 'CS-4051';
 
-  // Load students state
-  const [students, setStudents] = useState<StudentDetail[]>(() => {
-    try {
-      const stored = localStorage.getItem(LS_STUDENTS_KEY);
-      return stored ? JSON.parse(stored) : INITIAL_BATCH_STUDENTS;
-    } catch {
-      return INITIAL_BATCH_STUDENTS;
-    }
-  });
+  // Initialize students state strictly as empty array []
+  const [students, setStudents] = useState<StudentDetail[]>([]);
 
-  // Load audit logs
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => {
-    try {
-      const stored = localStorage.getItem(LS_AUDIT_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Initialize audit logs strictly as empty array []
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -127,7 +113,7 @@ export const ManageStudentsScreen: React.FC = () => {
 
   // ──────────────────────────────────────────
   // REAL-TIME FIRESTORE LISTENER FOR STUDENTS
-  // Query users collection where classCode == currentCoordinatorBatchCode and role == "student"
+  // Query users collection where classCode == currentBatchCode and role == "student"
   // ──────────────────────────────────────────
   useEffect(() => {
     if (!currentBatchCode) return;
@@ -140,30 +126,85 @@ export const ManageStudentsScreen: React.FC = () => {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) {
+        setStudents([]);
+        return;
+      }
+
       const liveStudents: StudentDetail[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        const existingStudent = students.find(s => s.rollNumber === data.rollNumber || s.email === data.email);
-        
         liveStudents.push({
           id: docSnap.id,
-          name: data.name || data.fullName || 'Student',
+          name: data.fullName || data.name || 'Student',
           rollNumber: data.rollNumber || 'N/A',
           email: data.email || 'N/A',
-          subjects: existingStudent?.subjects || activeBatchSubjects,
-          lectures: existingStudent?.lectures || INITIAL_BATCH_STUDENTS[0].lectures
+          attendancePercentage: data.attendancePercentage !== undefined ? data.attendancePercentage : (data.attendance !== undefined ? data.attendance : 0),
+          status: data.status || 'Active',
+          subjects: activeBatchSubjects,
+          lectures: []
         });
       });
 
-      if (liveStudents.length > 0) {
-        setStudents(liveStudents);
-      }
+      setStudents(liveStudents);
     }, (err) => {
       console.warn("Firestore student roster listener notice:", err);
+      setStudents([]);
     });
 
     return () => unsubscribe();
   }, [currentBatchCode, activeBatchSubjects]);
+
+  // ──────────────────────────────────────────
+  // REAL-TIME FIRESTORE LISTENER FOR AUDIT LOGS
+  // Query auditLogs collection where classCode == currentBatchCode
+  // ──────────────────────────────────────────
+  useEffect(() => {
+    if (!currentBatchCode) return;
+
+    const auditRef = collection(db, 'auditLogs');
+    const q = query(
+      auditRef,
+      where('classCode', '==', currentBatchCode)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) {
+        setAuditLogs([]);
+        return;
+      }
+
+      const logs: AuditLogEntry[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        logs.push({
+          id: docSnap.id,
+          studentId: data.studentId || '',
+          studentName: data.studentName || 'Student',
+          rollNumber: data.rollNumber || 'N/A',
+          lectureId: data.lectureId || '',
+          subjectCode: data.subjectCode || 'N/A',
+          subjectName: data.subjectName || 'N/A',
+          date: data.date || '',
+          oldStatus: data.oldStatus || 'Absent',
+          newStatus: data.newStatus || 'Present',
+          reason: data.reason || '',
+          editedBy: data.editedBy || 'Class Coordinator',
+          timestamp: data.timestamp || ''
+        });
+      });
+
+      // Sort logs descending by timestamp
+      logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      setAuditLogs(logs);
+    }, (err) => {
+      console.warn("Firestore auditLogs listener notice:", err);
+      setAuditLogs([]);
+    });
+
+    return () => unsubscribe();
+  }, [currentBatchCode]);
 
   // Sync to localStorage
   useEffect(() => {
@@ -345,6 +386,17 @@ export const ManageStudentsScreen: React.FC = () => {
 
     setAuditLogs(prev => [newAuditEntry, ...prev]);
 
+    // Persist Audit Log entry to Firestore auditLogs collection
+    try {
+      addDoc(collection(db, 'auditLogs'), {
+        ...newAuditEntry,
+        classCode: currentBatchCode,
+        createdAt: new Date().toISOString()
+      }).catch(err => console.warn("Firestore auditLogs write error:", err));
+    } catch (err) {
+      console.warn("Audit log write error:", err);
+    }
+
     // 2. Update Students state
     setStudents(prevStudents => {
       return prevStudents.map(student => {
@@ -473,7 +525,7 @@ export const ManageStudentsScreen: React.FC = () => {
           {auditLogs.length === 0 ? (
             <div className="text-center py-12 space-y-2 text-xs text-neutral-400">
               <FileText className="w-10 h-10 mx-auto text-amber-200" />
-              <p className="font-semibold text-neutral-600">No manual attendance overrides recorded yet.</p>
+              <p className="font-semibold text-neutral-600">No manual attendance overrides logged for batch {currentBatchCode}.</p>
               <p className="text-[11px]">When you edit a student's lecture record, a permanent audit entry will appear here.</p>
             </div>
           ) : (
@@ -545,7 +597,7 @@ export const ManageStudentsScreen: React.FC = () => {
               <div>
                 <span className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider">BATCH AVG ATTENDANCE</span>
                 <div className="text-3xl font-jakarta font-bold text-neutral-900 mt-1 tnum">
-                  {batchAvgPct}%
+                  {students.length === 0 ? '0.0%' : `${batchAvgPct.toFixed(1)}%`}
                 </div>
                 <span className="text-[11px] text-emerald-700 font-medium mt-0.5 block">Compliant (&gt;75%)</span>
               </div>
@@ -587,74 +639,88 @@ export const ManageStudentsScreen: React.FC = () => {
               </div>
             </div>
 
-            {/* Students Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-amber-100 text-neutral-400 text-[10px] font-mono uppercase tracking-wider">
-                    <th className="py-3.5 px-3">FULL NAME</th>
-                    <th className="py-3.5 px-3">ROLL NUMBER</th>
-                    <th className="py-3.5 px-3">EMAIL ADDRESS</th>
-                    <th className="py-3.5 px-3 text-right">OVERALL ATTENDANCE %</th>
-                    <th className="py-3.5 px-3 text-center">STATUS</th>
-                    <th className="py-3.5 px-3 text-right">ACTION</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-amber-100/60">
-                  {filteredStudents.map((student) => {
-                    const overallPct = calculateOverallPct(student);
-                    const isSafe = overallPct >= 75.0;
+            {/* Students Table or Empty State */}
+            {filteredStudents.length === 0 ? (
+              <div className="bg-amber-50/50 border border-amber-200/80 rounded-2xl py-12 px-6 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-xs">
+                  <Users className="w-6 h-6 text-[#FF6B4B]" />
+                </div>
+                <h3 className="font-jakarta font-bold text-neutral-900 text-base">
+                  No students registered under batch {currentBatchCode} yet.
+                </h3>
+                <p className="text-xs font-mono text-neutral-500 max-w-sm mx-auto leading-relaxed">
+                  New student registrations will automatically sync in real-time when they sign up with class code <strong className="text-[#FF6B4B]">{currentBatchCode}</strong>.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-amber-100 text-neutral-400 text-[10px] font-mono uppercase tracking-wider">
+                      <th className="py-3.5 px-3">FULL NAME</th>
+                      <th className="py-3.5 px-3">ROLL NUMBER</th>
+                      <th className="py-3.5 px-3">EMAIL ADDRESS</th>
+                      <th className="py-3.5 px-3 text-right">OVERALL ATTENDANCE %</th>
+                      <th className="py-3.5 px-3 text-center">STATUS</th>
+                      <th className="py-3.5 px-3 text-right">ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-100/60">
+                    {filteredStudents.map((student) => {
+                      const overallPct = calculateOverallPct(student);
+                      const isSafe = overallPct >= 75.0;
 
-                    return (
-                      <tr 
-                        key={student.id}
-                        className="hover:bg-amber-50/50 transition-colors cursor-pointer"
-                        onClick={() => setSelectedStudentId(student.id)}
-                      >
-                        <td className="py-3.5 px-3">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-9 h-9 rounded-full bg-orange-100 border border-orange-200 text-[#FF6B4B] font-bold text-xs flex items-center justify-center shrink-0">
-                              {student.name.split(' ').map(n => n[0]).join('')}
+                      return (
+                        <tr 
+                          key={student.id}
+                          className="hover:bg-amber-50/50 transition-colors cursor-pointer"
+                          onClick={() => setSelectedStudentId(student.id)}
+                        >
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-9 h-9 rounded-full bg-orange-100 border border-orange-200 text-[#FF6B4B] font-bold text-xs flex items-center justify-center shrink-0">
+                                {student.name.split(' ').map(n => n[0]).join('')}
+                              </div>
+                              <span className="font-jakarta font-semibold text-neutral-900 text-sm">{student.name}</span>
                             </div>
-                            <span className="font-jakarta font-semibold text-neutral-900 text-sm">{student.name}</span>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-3 text-neutral-600 font-mono tnum">{student.rollNumber}</td>
-                        <td className="py-3.5 px-3 text-neutral-600 font-sans text-xs">
-                          <div className="flex items-center space-x-1.5">
-                            <Mail className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                            <span>{student.email || 'N/A'}</span>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-3 text-right font-jakarta font-bold text-neutral-900 text-sm tnum">
-                          {overallPct}%
-                        </td>
-                        <td className="py-3.5 px-3 text-center">
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold font-mono tnum inline-block ${
-                            isSafe 
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200/60' 
-                              : 'bg-rose-100 text-rose-800 border border-rose-200/60'
-                          }`}>
-                            {isSafe ? '● SAFE' : '● AT RISK'}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-3 text-right">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedStudentId(student.id);
-                            }}
-                            className="bg-amber-50 hover:bg-orange-100 text-[#FF6B4B] border border-orange-200/60 rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all"
-                          >
-                            Manage Attendance
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                          <td className="py-3.5 px-3 text-neutral-600 font-mono tnum">{student.rollNumber}</td>
+                          <td className="py-3.5 px-3 text-neutral-600 font-sans text-xs">
+                            <div className="flex items-center space-x-1.5">
+                              <Mail className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                              <span>{student.email || 'N/A'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-3 text-right font-jakarta font-bold text-neutral-900 text-sm tnum">
+                            {overallPct}%
+                          </td>
+                          <td className="py-3.5 px-3 text-center">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold font-mono tnum inline-block ${
+                              isSafe 
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200/60' 
+                                : 'bg-rose-100 text-rose-800 border border-rose-200/60'
+                            }`}>
+                              {isSafe ? '● SAFE' : '● AT RISK'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 text-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStudentId(student.id);
+                              }}
+                              className="bg-amber-50 hover:bg-orange-100 text-[#FF6B4B] border border-orange-200/60 rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all"
+                            >
+                              Manage Attendance
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       ) : (

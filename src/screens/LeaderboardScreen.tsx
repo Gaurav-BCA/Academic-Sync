@@ -91,20 +91,17 @@ export const LeaderboardScreen: React.FC = () => {
       batchAttendanceLogs.map(l => l.date || l.timestamp?.seconds || l.id)
     );
 
-    // Dynamic total conducted fallback (e.g. 20 base classes if brand new cohort)
-    const totalBatchConducted = batchAttendanceLogs.length > 0 
-      ? Math.max(1, uniqueLogIdentifiers.size, Math.max(...batchAttendanceLogs.map(l => l.totalConducted || 0), 1))
-      : 20;
+    const totalBatchConducted = batchAttendanceLogs.length > 0 ? uniqueLogIdentifiers.size : 0;
 
-    const currentRoll = studentProfile?.rollNumber || userProfile?.rollNumber || '21CS045';
-    const currentName = studentProfile?.fullName || userProfile?.fullName || 'User Account';
+    const currentRoll = studentProfile?.rollNumber || userProfile?.rollNumber;
+    const currentName = studentProfile?.fullName || userProfile?.fullName;
 
     // Map roster items
     const roster: LeaderboardStudentNode[] = rawStudentsList.map((st) => {
       const isMe = st.id === currentUid || (st.rollNumber && currentRoll && st.rollNumber === currentRoll);
       const studentUid = st.id || st.uid;
-      const rollNo = st.rollNumber || (isMe ? currentRoll : 'N/A');
-      const name = st.name || st.fullName || (isMe ? currentName : 'Batch Student');
+      const rollNo = st.rollNumber || (isMe ? (currentRoll || 'N/A') : 'N/A');
+      const name = st.fullName || st.name || (isMe ? (currentName || 'Student') : 'Student');
       const email = st.email || 'N/A';
 
       // Filter logs for this specific student
@@ -114,23 +111,24 @@ export const LeaderboardScreen: React.FC = () => {
       );
 
       const totalAttended = studentLogs.filter(l => (l.status || '').toUpperCase() === 'PRESENT').length;
+      const conductedCount = studentLogs.length > 0 ? studentLogs.length : totalBatchConducted;
 
-      // Determine total conducted for student
-      const conductedCount = studentLogs.length > 0 ? Math.max(studentLogs.length, totalBatchConducted) : totalBatchConducted;
+      // Pure math: calculate percentage strictly from real logs or student profile fields
+      const profileAttended = st.attendedClasses !== undefined ? st.attendedClasses : totalAttended;
+      const profileTotal = st.totalClasses !== undefined ? st.totalClasses : conductedCount;
+      const overallPct = profileTotal > 0 
+        ? Number(((profileAttended / profileTotal) * 100).toFixed(1)) 
+        : (st.attendancePercentage !== undefined ? Number(st.attendancePercentage.toFixed(1)) : 0);
 
-      // Base calculation or fallback demo distribution
-      let overallPct = conductedCount > 0 ? Number(((totalAttended / conductedCount) * 100).toFixed(1)) : 0;
-
-      // Baseline realistic display fallback if zero logs recorded yet
-      if (studentLogs.length === 0 && batchAttendanceLogs.length === 0) {
-        overallPct = isMe ? 90.0 : 85.0;
-      }
-
-      let tier = '⚠️ Warning';
-      if (overallPct >= 85.0) {
-        tier = '🏆 Gold Tier';
-      } else if (overallPct >= 75.0) {
-        tier = '🥈 Silver Tier';
+      let tier = 'Pending';
+      if (profileTotal > 0 || overallPct > 0) {
+        if (overallPct >= 85.0) {
+          tier = '🏆 Gold Tier';
+        } else if (overallPct >= 75.0) {
+          tier = '🥈 Silver Tier';
+        } else {
+          tier = '⚠️ Warning Tier';
+        }
       }
 
       return {
@@ -139,30 +137,13 @@ export const LeaderboardScreen: React.FC = () => {
         name,
         rollNumber: rollNo,
         email,
-        totalAttended: studentLogs.length === 0 && batchAttendanceLogs.length === 0 ? Math.round((overallPct / 100) * 20) : totalAttended,
-        totalConducted: studentLogs.length === 0 && batchAttendanceLogs.length === 0 ? 20 : conductedCount,
+        totalAttended: profileAttended,
+        totalConducted: profileTotal,
         overallPercentage: overallPct,
         tier,
         isCurrentUser: Boolean(isMe)
       };
     });
-
-    // Ensure logged-in student profile is in roster
-    if (userProfile && !roster.some(s => s.isCurrentUser)) {
-      const defaultPct = 90.0;
-      roster.push({
-        id: currentUid || 'current-user-uid',
-        rank: 0,
-        name: currentName,
-        rollNumber: currentRoll,
-        email: userProfile.email || 'student@academic.edu',
-        totalAttended: 18,
-        totalConducted: 20,
-        overallPercentage: defaultPct,
-        tier: '🏆 Gold Tier',
-        isCurrentUser: true
-      });
-    }
 
     // Sort strictly by overallPercentage DESCENDING (Highest percentage gets Rank #01)
     roster.sort((a, b) => b.overallPercentage - a.overallPercentage);
@@ -267,10 +248,16 @@ export const LeaderboardScreen: React.FC = () => {
               <div className="animate-pulse bg-amber-100/60 rounded-xl h-12" />
             </div>
           ) : leaderboardStudents.length === 0 ? (
-            <div className="text-center py-12 space-y-2 font-mono text-xs text-neutral-500">
-              <Users className="w-8 h-8 text-amber-300 mx-auto" />
-              <p className="font-bold text-neutral-900">No Enrolled Students Found</p>
-              <p>No registered student accounts found for batch {activeClassCode} in Firestore.</p>
+            <div className="bg-amber-50/50 border border-amber-200/80 rounded-2xl py-12 px-6 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-xs">
+                <Users className="w-6 h-6 text-[#FF6B4B]" />
+              </div>
+              <h3 className="font-jakarta font-bold text-neutral-900 text-base">
+                No student records found in Cohort {activeClassCode}.
+              </h3>
+              <p className="text-xs font-mono text-neutral-500 max-w-sm mx-auto leading-relaxed">
+                Enrolled students will appear here on the live leaderboard as attendance logs are recorded.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -12,6 +12,7 @@ export interface ParsedSlot {
   code: string;
   faculty: string;
   room?: string;
+  type?: string;
 }
 
 export interface ParsedDaySchedule {
@@ -31,91 +32,24 @@ export type TimetableSlot = ParsedSlot;
 export type DaySchedule = ParsedDaySchedule;
 
 /**
- * Deterministic local fallback parser for standard timetable documents
- * Used when Gemini API returns 403, key is blocked, or network fails.
- */
-export function parseTimetableLocally(fileName?: string): GeminiParsedResult {
-  console.info(`[GeminiService] Running local OCR fallback parser for timetable document: ${fileName || 'Uploaded File'}`);
-
-  const subjects: ParsedSubject[] = [
-    { code: 'BCA 512', name: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda (MM)' },
-    { code: 'BCA 513', name: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar (RK)' },
-    { code: 'SE | 514', name: 'Software Engineering', faculty: 'Prof. Sunita Sharma (SS)' },
-    { code: 'BCA 515', name: 'Web Technologies Lab', faculty: 'Mr. Amit Verma (AV)' },
-    { code: 'BCA 516', name: 'Database Management Systems', faculty: 'Dr. Neha Gupta (NG)' }
-  ];
-
-  const timetable: ParsedDaySchedule[] = [
-    {
-      day: 'Monday',
-      slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Java Programming', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'LH-302' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'LH-302' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' }
-      ]
-    },
-    {
-      day: 'Tuesday',
-      slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'LH-302' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Java Programming Lab', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'Lab 1' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'LH-302' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' }
-      ]
-    },
-    {
-      day: 'Wednesday',
-      slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Java Programming', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'LH-302' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'LH-302' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Computer Graphics Lab', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'Lab 3' }
-      ]
-    },
-    {
-      day: 'Thursday',
-      slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'LH-302' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Java Programming', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'LH-302' }
-      ]
-    },
-    {
-      day: 'Friday',
-      slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'LH-302' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Database Systems Lab', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'Lab 1' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' }
-      ]
-    },
-    {
-      day: 'Saturday',
-      slots: []
-    }
-  ];
-
-  return { subjects, timetable, isFallback: true };
-}
-
-/**
  * Convert a File object to base64 inline data string (without data URL prefix)
+ * Handles both Image (image/png, image/jpeg) AND PDF (application/pdf) files dynamically.
  */
 export async function fileToBase64(file: File): Promise<{ mimeType: string; data: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      const base64Data = result.split(',')[1] || result;
+      const base64Data = result.includes(',') ? result.split(',')[1] : result;
 
       let mimeType = file.type;
       if (!mimeType) {
-        if (file.name.endsWith('.pdf')) mimeType = 'application/pdf';
-        else if (file.name.endsWith('.png')) mimeType = 'image/png';
-        else if (file.name.endsWith('.webp')) mimeType = 'image/webp';
-        else mimeType = 'image/jpeg';
+        const lowerName = file.name.toLowerCase();
+        if (lowerName.endsWith('.pdf')) mimeType = 'application/pdf';
+        else if (lowerName.endsWith('.png')) mimeType = 'image/png';
+        else if (lowerName.endsWith('.webp')) mimeType = 'image/webp';
+        else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) mimeType = 'image/jpeg';
+        else mimeType = 'application/pdf';
       }
 
       resolve({
@@ -129,140 +63,107 @@ export async function fileToBase64(file: File): Promise<{ mimeType: string; data
 }
 
 /**
- * Call Google Gemini 2.5 Flash API to parse timetable PDF/Image document via OCR
- * Falls back to deterministic local parser if 403 permission error or API failure occurs.
+ * Call Google Gemini API (with dynamic multi-model fallback chain: gemini-3.8-flash -> gemini-flash-latest -> gemini-flash-lite-latest)
+ * to parse timetable PDF/Image document via OCR.
  */
 export async function parseTimetableWithGemini(file: File): Promise<GeminiParsedResult> {
+  console.log("Processing file:", file.name, file.type);
+
   const apiKey = 
     import.meta.env.VITE_GEMINI_API_KEY || 
     (typeof process !== 'undefined' ? process?.env?.VITE_GEMINI_API_KEY : '') ||
     '';
 
-  if (!apiKey) {
-    console.warn('[GeminiService] Gemini API Key is missing. Check .env configuration.');
-    const fallback = parseTimetableLocally(file.name);
-    return {
-      ...fallback,
-      isFallback: true,
-      errorMsg: 'Gemini API Key invalid or expired. Check .env configuration.'
-    };
+  const grokApiKey = 
+    import.meta.env.VITE_GROK_API_KEY || 
+    import.meta.env.VITE_GROQ_API_KEY || 
+    (typeof process !== 'undefined' ? (process?.env?.VITE_GROK_API_KEY || process?.env?.VITE_GROQ_API_KEY) : '') ||
+    '';
+
+  if (!apiKey && !grokApiKey) {
+    const err = new Error('No API Key found. Please set VITE_GEMINI_API_KEY or VITE_GROK_API_KEY in your .env file.');
+    console.error("Gemini OCR Error:", err);
+    throw err;
   }
 
-  try {
-    const base64File = await fileToBase64(file);
+  const { mimeType: detectedMime, data: base64Data } = await fileToBase64(file);
+  const mimeType = file.type || detectedMime || 'application/pdf';
 
-    const promptText = `Analyze this college timetable document image or PDF and perform high-precision OCR extraction into structured JSON.
-
-SYSTEM INSTRUCTIONS & EXTRACTION RULES:
-1. MAP FACULTY INITIALS & SUBJECT CODES: Cross-reference the bottom legend / faculty reference table with top grid lecture slots. Expand faculty initials to full names and map exact syllabus codes (e.g. MM -> Mrs. Meenakshi Manchanda (MM), Java Programming -> BCA 512, CG -> BCA 513, SE -> SE | 514).
-2. MAIN CORE SUBJECTS FOCUS: Always extract official syllabus code subjects first (e.g. Java Programming [BCA 512], Computer Graphics [BCA 513], Software Engineering [SE | 514], Java Lab [BCA 515]).
-3. NON-ACADEMIC SLOTS HANDLING: For non-academic slots such as "PDP", "Apptitude", "Sports", "Library", or "Lunch Break", map them cleanly with code: "NON-CREDIT" or mark them appropriately so they do not corrupt main academic subjects.
-4. SATURDAY HANDLING: If Saturday is marked "OFF" or has no classes scheduled, treat it as an empty array [].
-
-OUTPUT FORMAT REQUIREMENTS:
-Return ONLY a valid JSON object matching this exact schema (no markdown formatting, no backticks, raw JSON only):
+  const promptText = `You are a strict academic timetable OCR parser. Inspect the uploaded timetable grid and bottom faculty/subject legend table. Cross-reference faculty codes (e.g., MM -> Mrs. Meenakshi Manchanda, CG -> Computer Graphics BCA 513, SE -> Software Engineering SE | 514). Extract ONLY the actual scheduled core subjects for each day (Mon to Sat) into this exact JSON format:
 {
-  "Mon": [
-    {
-      "slot": "LEC I",
-      "time": "08:40 AM - 09:40 AM",
-      "subject": "Java Programming",
-      "code": "BCA 512",
-      "teacher": "Mrs. Meenakshi Manchanda (MM)",
-      "room": "LH-302"
-    }
-  ],
+  "Mon": [{ "code": "BCA 512", "subject": "Java Programming", "time": "08:40 AM - 09:40 AM", "teacher": "Mrs. Meenakshi Manchanda (MM)", "room": "LH-302" }],
   "Tue": [],
   "Wed": [],
   "Thu": [],
   "Fri": [],
   "Sat": []
-}`;
+}
+Ignore 'OFF' days or return empty array []. Output raw JSON only without markdown formatting or backticks.`;
 
-    const normalizeObjectSchedule = (obj: Record<string, any>): { timetable: ParsedDaySchedule[]; subjects: ParsedSubject[] } => {
-      const dayMap: Record<string, string> = {
-        mon: 'Monday', monday: 'Monday',
-        tue: 'Tuesday', tuesday: 'Tuesday',
-        wed: 'Wednesday', wednesday: 'Wednesday',
-        thu: 'Thursday', thursday: 'Thursday',
-        fri: 'Friday', friday: 'Friday',
-        sat: 'Saturday', saturday: 'Saturday'
-      };
-
-      const timetableResult: ParsedDaySchedule[] = [];
-      const subjectsMap = new Map<string, ParsedSubject>();
-
-      Object.keys(obj).forEach((k) => {
-        const lowerKey = k.toLowerCase();
-        const mappedDay = dayMap[lowerKey];
-        if (mappedDay && Array.isArray(obj[k])) {
-          const slots = obj[k].map((s: any) => {
-            const code = s.code || s.subjectCode || 'BCA 512';
-            const subjectName = s.subject || s.subjectName || s.name || 'Class Subject';
-            const faculty = s.teacher || s.faculty || s.instructor || 'Faculty Member';
-            const room = s.room || s.location || 'LH-302';
-            const time = s.time || s.timeSlot || '08:40 AM - 09:40 AM';
-            const type = s.slot || s.type || 'Lecture';
-
-            if (code && code !== 'NON-CREDIT' && !subjectsMap.has(code)) {
-              subjectsMap.set(code, {
-                code,
-                name: subjectName,
-                faculty
-              });
-            }
-
-            return {
-              time,
-              subject: subjectName,
-              code,
-              faculty,
-              room,
-              type
-            };
-          });
-
-          timetableResult.push({
-            day: mappedDay,
-            slots
-          });
-        }
-      });
-
-      return {
-        timetable: timetableResult.length > 0 ? timetableResult : [],
-        subjects: Array.from(subjectsMap.values())
-      };
+  const normalizeObjectSchedule = (obj: Record<string, any>): { timetable: ParsedDaySchedule[]; subjects: ParsedSubject[] } => {
+    const dayMap: Record<string, string> = {
+      mon: 'Monday', monday: 'Monday',
+      tue: 'Tuesday', tuesday: 'Tuesday',
+      wed: 'Wednesday', wednesday: 'Wednesday',
+      thu: 'Thursday', thursday: 'Thursday',
+      fri: 'Friday', friday: 'Friday',
+      sat: 'Saturday', saturday: 'Saturday'
     };
 
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: promptText },
-              {
-                inlineData: {
-                  mimeType: base64File.mimeType,
-                  data: base64File.data
-                }
-              }
-            ]
+    const timetableResult: ParsedDaySchedule[] = [];
+    const subjectsMap = new Map<string, ParsedSubject>();
+
+    Object.keys(obj).forEach((k) => {
+      const lowerKey = k.toLowerCase();
+      const mappedDay = dayMap[lowerKey];
+      if (mappedDay && Array.isArray(obj[k])) {
+        const slots = obj[k].map((s: any) => {
+          const code = s.code || s.subjectCode || 'BCA 512';
+          const subjectName = s.subject || s.subjectName || s.name || 'Class Subject';
+          const faculty = s.teacher || s.faculty || s.instructor || 'Faculty Member';
+          const room = s.room || s.location || 'LH-302';
+          const time = s.time || s.timeSlot || '08:40 AM - 09:40 AM';
+          const type = s.slot || s.type || 'Lecture';
+
+          if (code && code !== 'NON-CREDIT' && !subjectsMap.has(code)) {
+            subjectsMap.set(code, {
+              code,
+              name: subjectName,
+              faculty
+            });
           }
-        ]
-      });
 
-      const responseText = response.text || '';
-      const cleanJsonText = responseText
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim();
+          return {
+            time,
+            subject: subjectName,
+            code,
+            faculty,
+            room,
+            type
+          };
+        });
 
+        timetableResult.push({
+          day: mappedDay,
+          slots
+        });
+      }
+    });
+
+    return {
+      timetable: timetableResult,
+      subjects: Array.from(subjectsMap.values())
+    };
+  };
+
+  const parseJsonFromText = (rawText: string): GeminiParsedResult | null => {
+    const cleanJsonText = rawText
+      .replace(/```json/gi, '')
+      .replace(/```/g, '')
+      .trim();
+
+    try {
       const parsed = JSON.parse(cleanJsonText);
-
       if (parsed && typeof parsed === 'object') {
         if (Array.isArray(parsed.timetable)) {
           return {
@@ -278,33 +179,118 @@ Return ONLY a valid JSON object matching this exact schema (no markdown formatti
             isFallback: false
           };
         }
-        // Handle { Mon: [...], Tue: [...] } schema
         const normalized = normalizeObjectSchedule(parsed);
         if (normalized.timetable.length > 0) {
           return {
-            subjects: normalized.subjects.length > 0 ? normalized.subjects : (Array.isArray(parsed.subjects) ? parsed.subjects : []),
+            subjects: normalized.subjects,
             timetable: normalized.timetable,
             isFallback: false
           };
         }
       }
-    } catch (sdkErr: any) {
-      console.warn('[GeminiService] SDK call failed, attempting REST endpoint fallback:', sdkErr);
+    } catch {
+      // noop
+    }
+    return null;
+  };
 
-      // Direct REST API fallback call to gemini-2.5-flash
-      const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      const res = await fetch(restUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+  // 1. Try Gemini API with multi-model fallback chain
+  if (apiKey) {
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
+
+    for (const modelName of candidateModels) {
+      console.log(`[GeminiService] Attempting OCR with model: ${modelName}`);
+
+      // Try SDK first
+      try {
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+          model: modelName,
           contents: [
             {
+              role: 'user',
               parts: [
                 { text: promptText },
                 {
-                  inline_data: {
-                    mime_type: base64File.mimeType,
-                    data: base64File.data
+                  inlineData: {
+                    data: base64Data,
+                    mimeType: mimeType
+                  }
+                }
+              ]
+            }
+          ]
+        });
+
+        const parsedResult = parseJsonFromText(response.text || '');
+        if (parsedResult) return parsedResult;
+      } catch (sdkErr: any) {
+        console.warn(`[GeminiService] SDK call for ${modelName} failed, trying REST API:`, sdkErr?.message || sdkErr);
+      }
+
+      // Try REST API fallback for model
+      try {
+        const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const res = await fetch(restUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: promptText },
+                  {
+                    inline_data: {
+                      data: base64Data,
+                      mime_type: mimeType
+                    }
+                  }
+                ]
+              }
+            ]
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const parsedResult = parseJsonFromText(rawText);
+          if (parsedResult) return parsedResult;
+        } else {
+          const errText = await res.text();
+          console.warn(`[GeminiService] Model ${modelName} returned HTTP ${res.status}:`, errText);
+        }
+      } catch (restErr: any) {
+        console.warn(`[GeminiService] REST call for ${modelName} failed:`, restErr);
+      }
+    }
+  }
+
+  // 2. Fallback to Grok / Groq API if VITE_GROK_API_KEY / VITE_GROQ_API_KEY is configured
+  if (grokApiKey) {
+    console.log("[GeminiService] Falling back to Grok/Groq API for OCR...");
+    try {
+      const isGroq = !!(import.meta.env.VITE_GROQ_API_KEY || (typeof process !== 'undefined' && process?.env?.VITE_GROQ_API_KEY));
+      const endpoint = isGroq ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions';
+      const model = isGroq ? 'llama-3.2-11b-vision-preview' : 'grok-2-vision-1212';
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${grokApiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: promptText },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${mimeType};base64,${base64Data}`
                   }
                 }
               ]
@@ -313,48 +299,16 @@ Return ONLY a valid JSON object matching this exact schema (no markdown formatti
         })
       });
 
-      if (!res.ok) {
-        const errText = await res.text();
-        console.error(`[GeminiService] Gemini REST API returned ${res.status}: ${errText}`);
-        throw new Error(`Gemini API Key invalid or expired. Check .env configuration. (${res.status})`);
+      if (res.ok) {
+        const data = await res.json();
+        const rawText = data?.choices?.[0]?.message?.content || '';
+        const parsedResult = parseJsonFromText(rawText);
+        if (parsedResult) return parsedResult;
       }
-
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const cleanJson = rawText
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim();
-
-      const parsedData = JSON.parse(cleanJson);
-      if (parsedData && typeof parsedData === 'object') {
-        if (Array.isArray(parsedData.timetable)) {
-          return {
-            subjects: Array.isArray(parsedData.subjects) ? parsedData.subjects : [],
-            timetable: parsedData.timetable,
-            isFallback: false
-          };
-        }
-        const normalized = normalizeObjectSchedule(parsedData);
-        if (normalized.timetable.length > 0) {
-          return {
-            subjects: normalized.subjects.length > 0 ? normalized.subjects : (Array.isArray(parsedData.subjects) ? parsedData.subjects : []),
-            timetable: normalized.timetable,
-            isFallback: false
-          };
-        }
-      }
+    } catch (grokErr) {
+      console.error("[GeminiService] Grok/Groq OCR fallback failed:", grokErr);
     }
-
-    throw new Error('AI Timetable Parsing Failed — Invalid JSON structure returned.');
-  } catch (err: any) {
-    console.error('[GeminiService] Error during Gemini OCR processing:', err);
-    const fallback = parseTimetableLocally(file.name);
-    return {
-      ...fallback,
-      isFallback: true,
-      errorMsg: 'Gemini API Key invalid or expired. Check .env configuration.'
-    };
   }
-}
 
+  throw new Error('All AI OCR providers/models are currently experiencing high demand. Please try clicking AUTO-PARSE TIMETABLE again in a few seconds.');
+}

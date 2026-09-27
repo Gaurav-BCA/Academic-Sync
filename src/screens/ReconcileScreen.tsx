@@ -89,21 +89,22 @@ export const ReconcileScreen: React.FC = () => {
 
   // Map today's logged sessions combined with timetable slots, dailyScheduleMap & firestoreLogs
   const recordedSessions = useMemo(() => {
-    const baseSlots = (todayTimetable && todayTimetable.length > 0) 
-      ? todayTimetable 
-      : [
-          { id: 'slot-0', subject: 'Java Programming', code: 'BCA 512', time: '08:40 AM - 09:40 AM' },
-          { id: 'slot-1', subject: 'Computer Graphics', code: 'BCA 513', time: '09:40 AM - 10:40 AM' },
-          { id: 'slot-2', subject: 'Database Systems', code: 'BCA 516', time: '10:50 AM - 11:50 AM' },
-          { id: 'slot-3', subject: 'Web Technologies', code: 'BCA 515', time: '11:50 AM - 12:50 PM' }
-        ];
+    // Sunday Off-day Check
+    if (new Date().getDay() === 0) {
+      return [];
+    }
+
+    const baseSlots = (todayTimetable && todayTimetable.length > 0) ? todayTimetable : [];
+    if (baseSlots.length === 0) {
+      return [];
+    }
 
     const currentUid = userProfile?.uid || studentProfile?.uid;
-    const currentRoll = userProfile?.rollNumber || studentProfile?.rollNumber || '21CS045';
+    const currentRoll = userProfile?.rollNumber || studentProfile?.rollNumber || '';
 
     return baseSlots.map((slot: any, idx: number) => {
       const slotId = slot.id || `slot-${idx}`;
-      const subCode = slot.code || slot.subjectCode || `BCA 51${idx + 2}`;
+      const subCode = slot.code || slot.subjectCode || `SUB-${idx + 1}`;
       const subName = slot.subject || slot.name || slot.subjectName || 'Class Session';
       const timeSlot = slot.time || '09:00 AM - 10:00 AM';
 
@@ -119,7 +120,7 @@ export const ReconcileScreen: React.FC = () => {
       } else if (slotStatus === 'conducted') {
         // Conducted by Teacher -> Check student's attendanceLogs for this slot
         const studentSubjectLogs = firestoreLogs.filter(l => {
-          const matchesStudent = l.studentUid === currentUid || l.rollNumber === currentRoll || !l.studentUid;
+          const matchesStudent = l.studentUid === currentUid || (l.rollNumber && currentRoll && l.rollNumber === currentRoll) || !l.studentUid;
           const matchesSubject = (l.subjectCode && l.subjectCode.toUpperCase() === subCode.toUpperCase()) ||
                                  (l.subjectName && l.subjectName.toLowerCase().includes(subName.toLowerCase()));
           return matchesStudent && matchesSubject;
@@ -315,71 +316,83 @@ export const ReconcileScreen: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {recordedSessions.map((session) => (
-              <div 
-                key={session.id}
-                className="p-4 rounded-2xl border border-amber-100 bg-white shadow-xs space-y-3 transition-all hover:border-amber-200"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h4 className="font-jakarta font-bold text-neutral-900 text-sm">
-                      {session.subjectName} - {session.subjectCode}
-                    </h4>
-                    <div className="flex items-center space-x-2 text-xs font-mono text-neutral-600 tnum">
-                      <Clock className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>{session.timeSlot}</span>
+            {recordedSessions.length === 0 ? (
+              <div className="bg-amber-50/50 border border-amber-200/80 rounded-2xl p-8 text-center space-y-2">
+                <Clock className="w-8 h-8 text-amber-600 mx-auto" />
+                <h3 className="font-jakarta font-bold text-neutral-900 text-sm">
+                  No conducted classes logged for reconciliation today.
+                </h3>
+                <p className="text-xs font-mono text-neutral-500 max-w-sm mx-auto leading-relaxed">
+                  {new Date().getDay() === 0 ? "Sunday Off / Holiday." : "No scheduled lectures found in Firestore for today."}
+                </p>
+              </div>
+            ) : (
+              recordedSessions.map((session) => (
+                <div 
+                  key={session.id}
+                  className="p-4 rounded-2xl border border-amber-100 bg-white shadow-xs space-y-3 transition-all hover:border-amber-200"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h4 className="font-jakarta font-bold text-neutral-900 text-sm">
+                        {session.subjectName} - {session.subjectCode}
+                      </h4>
+                      <div className="flex items-center space-x-2 text-xs font-mono text-neutral-600 tnum">
+                        <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>{session.timeSlot}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      {session.statusType === 'PRESENT' && (
+                        <span className="bg-emerald-100 border border-emerald-300 text-emerald-800 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
+                          <span>🟢 Present</span>
+                        </span>
+                      )}
+
+                      {session.statusType === 'ABSENT' && (
+                        <span className="bg-rose-100 border border-rose-300 text-rose-800 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
+                          <span>🔴 Absent</span>
+                        </span>
+                      )}
+
+                      {session.statusType === 'CANCELLED' && (
+                        <span className="bg-amber-100 border border-amber-300 text-amber-800 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
+                          <span>🟡 No Class / Cancelled</span>
+                        </span>
+                      )}
+
+                      {session.statusType === 'UPCOMING' && (
+                        <span className="bg-stone-100 border border-stone-300 text-stone-700 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
+                          <span>⚪ Pending Execution</span>
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div>
+                  {/* Interactive Action Buttons per Session Status */}
+                  <div className="pt-1 flex items-center justify-end">
                     {session.statusType === 'PRESENT' && (
-                      <span className="bg-emerald-100 border border-emerald-300 text-emerald-800 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
-                        <span>🟢 Present</span>
-                      </span>
+                      <button
+                        onClick={() => handleSelfMarkAbsent(session)}
+                        className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-xs font-mono font-bold transition-all shadow-2xs flex items-center space-x-1 cursor-pointer"
+                      >
+                        <span>🔴 Mark Myself Absent</span>
+                      </button>
                     )}
 
                     {session.statusType === 'ABSENT' && (
-                      <span className="bg-rose-100 border border-rose-300 text-rose-800 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
-                        <span>🔴 Absent</span>
-                      </span>
-                    )}
-
-                    {session.statusType === 'CANCELLED' && (
-                      <span className="bg-amber-100 border border-amber-300 text-amber-800 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
-                        <span>🟡 No Class / Cancelled</span>
-                      </span>
-                    )}
-
-                    {session.statusType === 'UPCOMING' && (
-                      <span className="bg-stone-100 border border-stone-300 text-stone-700 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1.5 shadow-xs">
-                        <span>⚪ Pending Execution</span>
-                      </span>
+                      <button
+                        onClick={() => handleRequestPresentApproval(session)}
+                        className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full text-xs font-mono font-bold transition-all shadow-2xs flex items-center space-x-1 cursor-pointer"
+                      >
+                        <span>📩 Request Present Approval</span>
+                      </button>
                     )}
                   </div>
                 </div>
-
-                {/* Interactive Action Buttons per Session Status */}
-                <div className="pt-1 flex items-center justify-end">
-                  {session.statusType === 'PRESENT' && (
-                    <button
-                      onClick={() => handleSelfMarkAbsent(session)}
-                      className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-xs font-mono font-bold transition-all shadow-2xs flex items-center space-x-1 cursor-pointer"
-                    >
-                      <span>🔴 Mark Myself Absent</span>
-                    </button>
-                  )}
-
-                  {session.statusType === 'ABSENT' && (
-                    <button
-                      onClick={() => handleRequestPresentApproval(session)}
-                      className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full text-xs font-mono font-bold transition-all shadow-2xs flex items-center space-x-1 cursor-pointer"
-                    >
-                      <span>📩 Request Present Approval</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
@@ -420,13 +433,9 @@ export const ReconcileScreen: React.FC = () => {
                   </option>
                 ))
               ) : (
-                <>
-                  <option value="bca512">Java Programming (BCA 512)</option>
-                  <option value="bca513">Computer Graphics (BCA 513)</option>
-                  <option value="bca514">Software Engineering (BCA 514)</option>
-                  <option value="bca515">Web Technologies (BCA 515)</option>
-                  <option value="bca516">Database Systems (BCA 516)</option>
-                </>
+                <option value="" disabled>
+                  No active batch subjects found
+                </option>
               )}
             </select>
           </div>
