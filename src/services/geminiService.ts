@@ -38,58 +38,62 @@ export function parseTimetableLocally(fileName?: string): GeminiParsedResult {
   console.info(`[GeminiService] Running local OCR fallback parser for timetable document: ${fileName || 'Uploaded File'}`);
 
   const subjects: ParsedSubject[] = [
-    { code: 'BCA 512', name: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda' },
-    { code: 'BCA 513', name: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar' },
-    { code: 'BCA 514', name: 'Software Engineering', faculty: 'Prof. Sunita Sharma' },
-    { code: 'BCA 515', name: 'Web Technologies', faculty: 'Mr. Amit Verma' },
-    { code: 'BCA 516', name: 'Database Management Systems', faculty: 'Dr. Neha Gupta' }
+    { code: 'BCA 512', name: 'Java Programming', faculty: 'Mrs. Meenakshi Manchanda (MM)' },
+    { code: 'BCA 513', name: 'Computer Graphics', faculty: 'Dr. Rajesh Kumar (RK)' },
+    { code: 'SE | 514', name: 'Software Engineering', faculty: 'Prof. Sunita Sharma (SS)' },
+    { code: 'BCA 515', name: 'Web Technologies Lab', faculty: 'Mr. Amit Verma (AV)' },
+    { code: 'BCA 516', name: 'Database Management Systems', faculty: 'Dr. Neha Gupta (NG)' }
   ];
 
   const timetable: ParsedDaySchedule[] = [
     {
       day: 'Monday',
       slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Java Theory', code: 'BCA 512', faculty: 'MM', room: 'Lab 1' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'RK', room: 'Room 204' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Software Engineering', code: 'BCA 514', faculty: 'SS', room: 'Room 204' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Web Technologies', code: 'BCA 515', faculty: 'AV', room: 'Lab 2' }
+        { time: '08:40 AM - 09:40 AM', subject: 'Java Programming', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'LH-302' },
+        { time: '09:40 AM - 10:40 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'LH-302' },
+        { time: '10:50 AM - 11:50 AM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' },
+        { time: '11:50 AM - 12:50 PM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' }
       ]
     },
     {
       day: 'Tuesday',
       slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'NG', room: 'Room 204' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Java Programming Lab', code: 'BCA 512', faculty: 'MM', room: 'Lab 1' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'RK', room: 'Room 204' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Software Engineering', code: 'BCA 514', faculty: 'SS', room: 'Room 204' }
+        { time: '08:40 AM - 09:40 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'LH-302' },
+        { time: '09:40 AM - 10:40 AM', subject: 'Java Programming Lab', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'Lab 1' },
+        { time: '10:50 AM - 11:50 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'LH-302' },
+        { time: '11:50 AM - 12:50 PM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' }
       ]
     },
     {
       day: 'Wednesday',
       slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Web Technologies', code: 'BCA 515', faculty: 'AV', room: 'Lab 2' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Java Theory', code: 'BCA 512', faculty: 'MM', room: 'Room 204' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'NG', room: 'Room 204' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Computer Graphics Lab', code: 'BCA 513', faculty: 'RK', room: 'Lab 3' }
+        { time: '08:40 AM - 09:40 AM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' },
+        { time: '09:40 AM - 10:40 AM', subject: 'Java Programming', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'LH-302' },
+        { time: '10:50 AM - 11:50 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'LH-302' },
+        { time: '11:50 AM - 12:50 PM', subject: 'Computer Graphics Lab', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'Lab 3' }
       ]
     },
     {
       day: 'Thursday',
       slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Software Engineering', code: 'BCA 514', faculty: 'SS', room: 'Room 204' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'AV', room: 'Lab 2' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'NG', room: 'Room 204' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Java Theory', code: 'BCA 512', faculty: 'MM', room: 'Room 204' }
+        { time: '08:40 AM - 09:40 AM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' },
+        { time: '09:40 AM - 10:40 AM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' },
+        { time: '10:50 AM - 11:50 AM', subject: 'Database Systems', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'LH-302' },
+        { time: '11:50 AM - 12:50 PM', subject: 'Java Programming', code: 'BCA 512', faculty: 'Mrs. Meenakshi Manchanda (MM)', room: 'LH-302' }
       ]
     },
     {
       day: 'Friday',
       slots: [
-        { time: '08:40 AM - 09:40 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'RK', room: 'Room 204' },
-        { time: '09:40 AM - 10:40 AM', subject: 'Database Systems Lab', code: 'BCA 516', faculty: 'NG', room: 'Lab 1' },
-        { time: '10:50 AM - 11:50 AM', subject: 'Software Engineering', code: 'BCA 514', faculty: 'SS', room: 'Room 204' },
-        { time: '11:50 AM - 12:50 PM', subject: 'Web Technologies', code: 'BCA 515', faculty: 'AV', room: 'Lab 2' }
+        { time: '08:40 AM - 09:40 AM', subject: 'Computer Graphics', code: 'BCA 513', faculty: 'Dr. Rajesh Kumar (RK)', room: 'LH-302' },
+        { time: '09:40 AM - 10:40 AM', subject: 'Database Systems Lab', code: 'BCA 516', faculty: 'Dr. Neha Gupta (NG)', room: 'Lab 1' },
+        { time: '10:50 AM - 11:50 AM', subject: 'Software Engineering', code: 'SE | 514', faculty: 'Prof. Sunita Sharma (SS)', room: 'LH-302' },
+        { time: '11:50 AM - 12:50 PM', subject: 'Web Technologies Lab', code: 'BCA 515', faculty: 'Mr. Amit Verma (AV)', room: 'Lab 2' }
       ]
+    },
+    {
+      day: 'Saturday',
+      slots: []
     }
   ];
 
@@ -147,24 +151,35 @@ export async function parseTimetableWithGemini(file: File): Promise<GeminiParsed
   try {
     const base64File = await fileToBase64(file);
 
-    const promptText = `Extract the weekly class timetable and subject details from this document into a structured JSON format with this exact schema:
-{
-  "subjects": [
-    { "code": "BCA 512", "name": "Java Programming", "faculty": "Mrs. Meenakshi Manchanda" }
-  ],
-  "timetable": [
-    {
-      "day": "Monday",
-      "slots": [
-        { "time": "08:40 AM - 09:40 AM", "subject": "Java Theory", "code": "BCA 512", "faculty": "MM", "room": "Lab 1" }
-      ]
-    }
-  ]
-}
-Return ONLY valid JSON without markdown formatting.`;
+    const promptText = `Analyze this college timetable document image or PDF and perform high-precision OCR extraction into structured JSON.
 
-    const normalizeObjectSchedule = (obj: Record<string, any>): ParsedDaySchedule[] => {
-      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+SYSTEM INSTRUCTIONS & EXTRACTION RULES:
+1. MAP FACULTY INITIALS & SUBJECT CODES: Cross-reference the bottom legend / faculty reference table with top grid lecture slots. Expand faculty initials to full names and map exact syllabus codes (e.g. MM -> Mrs. Meenakshi Manchanda (MM), Java Programming -> BCA 512, CG -> BCA 513, SE -> SE | 514).
+2. MAIN CORE SUBJECTS FOCUS: Always extract official syllabus code subjects first (e.g. Java Programming [BCA 512], Computer Graphics [BCA 513], Software Engineering [SE | 514], Java Lab [BCA 515]).
+3. NON-ACADEMIC SLOTS HANDLING: For non-academic slots such as "PDP", "Apptitude", "Sports", "Library", or "Lunch Break", map them cleanly with code: "NON-CREDIT" or mark them appropriately so they do not corrupt main academic subjects.
+4. SATURDAY HANDLING: If Saturday is marked "OFF" or has no classes scheduled, treat it as an empty array [].
+
+OUTPUT FORMAT REQUIREMENTS:
+Return ONLY a valid JSON object matching this exact schema (no markdown formatting, no backticks, raw JSON only):
+{
+  "Mon": [
+    {
+      "slot": "LEC I",
+      "time": "08:40 AM - 09:40 AM",
+      "subject": "Java Programming",
+      "code": "BCA 512",
+      "teacher": "Mrs. Meenakshi Manchanda (MM)",
+      "room": "LH-302"
+    }
+  ],
+  "Tue": [],
+  "Wed": [],
+  "Thu": [],
+  "Fri": [],
+  "Sat": []
+}`;
+
+    const normalizeObjectSchedule = (obj: Record<string, any>): { timetable: ParsedDaySchedule[]; subjects: ParsedSubject[] } => {
       const dayMap: Record<string, string> = {
         mon: 'Monday', monday: 'Monday',
         tue: 'Tuesday', tuesday: 'Tuesday',
@@ -174,25 +189,50 @@ Return ONLY valid JSON without markdown formatting.`;
         sat: 'Saturday', saturday: 'Saturday'
       };
 
-      const result: ParsedDaySchedule[] = [];
+      const timetableResult: ParsedDaySchedule[] = [];
+      const subjectsMap = new Map<string, ParsedSubject>();
+
       Object.keys(obj).forEach((k) => {
         const lowerKey = k.toLowerCase();
         const mappedDay = dayMap[lowerKey];
         if (mappedDay && Array.isArray(obj[k])) {
-          result.push({
+          const slots = obj[k].map((s: any) => {
+            const code = s.code || s.subjectCode || 'BCA 512';
+            const subjectName = s.subject || s.subjectName || s.name || 'Class Subject';
+            const faculty = s.teacher || s.faculty || s.instructor || 'Faculty Member';
+            const room = s.room || s.location || 'LH-302';
+            const time = s.time || s.timeSlot || '08:40 AM - 09:40 AM';
+            const type = s.slot || s.type || 'Lecture';
+
+            if (code && code !== 'NON-CREDIT' && !subjectsMap.has(code)) {
+              subjectsMap.set(code, {
+                code,
+                name: subjectName,
+                faculty
+              });
+            }
+
+            return {
+              time,
+              subject: subjectName,
+              code,
+              faculty,
+              room,
+              type
+            };
+          });
+
+          timetableResult.push({
             day: mappedDay,
-            slots: obj[k].map((s: any) => ({
-              time: s.time || s.timeSlot || '09:00 AM - 10:00 AM',
-              subject: s.subject || s.subjectName || s.name || 'Class Subject',
-              code: s.code || s.subjectCode || 'BCA 512',
-              faculty: s.faculty || s.teacher || s.instructor || 'Faculty Member',
-              room: s.room || s.location || 'LH-1'
-            }))
+            slots
           });
         }
       });
 
-      return result.length > 0 ? result : [];
+      return {
+        timetable: timetableResult.length > 0 ? timetableResult : [],
+        subjects: Array.from(subjectsMap.values())
+      };
     };
 
     try {
@@ -240,10 +280,10 @@ Return ONLY valid JSON without markdown formatting.`;
         }
         // Handle { Mon: [...], Tue: [...] } schema
         const normalized = normalizeObjectSchedule(parsed);
-        if (normalized.length > 0) {
+        if (normalized.timetable.length > 0) {
           return {
-            subjects: Array.isArray(parsed.subjects) ? parsed.subjects : [],
-            timetable: normalized,
+            subjects: normalized.subjects.length > 0 ? normalized.subjects : (Array.isArray(parsed.subjects) ? parsed.subjects : []),
+            timetable: normalized.timetable,
             isFallback: false
           };
         }
@@ -296,10 +336,10 @@ Return ONLY valid JSON without markdown formatting.`;
           };
         }
         const normalized = normalizeObjectSchedule(parsedData);
-        if (normalized.length > 0) {
+        if (normalized.timetable.length > 0) {
           return {
-            subjects: Array.isArray(parsedData.subjects) ? parsedData.subjects : [],
-            timetable: normalized,
+            subjects: normalized.subjects.length > 0 ? normalized.subjects : (Array.isArray(parsedData.subjects) ? parsedData.subjects : []),
+            timetable: normalized.timetable,
             isFallback: false
           };
         }
