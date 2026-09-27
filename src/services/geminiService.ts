@@ -23,6 +23,7 @@ export interface GeminiParsedResult {
   subjects: ParsedSubject[];
   timetable: ParsedDaySchedule[];
   isFallback?: boolean;
+  errorMsg?: string;
 }
 
 // Legacy aliases for backward compatibility
@@ -130,12 +131,17 @@ export async function fileToBase64(file: File): Promise<{ mimeType: string; data
 export async function parseTimetableWithGemini(file: File): Promise<GeminiParsedResult> {
   const apiKey = 
     import.meta.env.VITE_GEMINI_API_KEY || 
-    import.meta.env.VITE_FIREBASE_API_KEY ||
+    (typeof process !== 'undefined' ? process?.env?.VITE_GEMINI_API_KEY : '') ||
     '';
 
   if (!apiKey) {
-    console.warn('[GeminiService] Gemini API key is missing. Using local OCR fallback parser.');
-    return parseTimetableLocally(file.name);
+    console.warn('[GeminiService] Gemini API Key is missing. Check .env configuration.');
+    const fallback = parseTimetableLocally(file.name);
+    return {
+      ...fallback,
+      isFallback: true,
+      errorMsg: 'Gemini API Key invalid or expired. Check .env configuration.'
+    };
   }
 
   try {
@@ -156,6 +162,38 @@ export async function parseTimetableWithGemini(file: File): Promise<GeminiParsed
   ]
 }
 Return ONLY valid JSON without markdown formatting.`;
+
+    const normalizeObjectSchedule = (obj: Record<string, any>): ParsedDaySchedule[] => {
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayMap: Record<string, string> = {
+        mon: 'Monday', monday: 'Monday',
+        tue: 'Tuesday', tuesday: 'Tuesday',
+        wed: 'Wednesday', wednesday: 'Wednesday',
+        thu: 'Thursday', thursday: 'Thursday',
+        fri: 'Friday', friday: 'Friday',
+        sat: 'Saturday', saturday: 'Saturday'
+      };
+
+      const result: ParsedDaySchedule[] = [];
+      Object.keys(obj).forEach((k) => {
+        const lowerKey = k.toLowerCase();
+        const mappedDay = dayMap[lowerKey];
+        if (mappedDay && Array.isArray(obj[k])) {
+          result.push({
+            day: mappedDay,
+            slots: obj[k].map((s: any) => ({
+              time: s.time || s.timeSlot || '09:00 AM - 10:00 AM',
+              subject: s.subject || s.subjectName || s.name || 'Class Subject',
+              code: s.code || s.subjectCode || 'BCA 512',
+              faculty: s.faculty || s.teacher || s.instructor || 'Faculty Member',
+              room: s.room || s.location || 'LH-1'
+            }))
+          });
+        }
+      });
+
+      return result.length > 0 ? result : [];
+    };
 
     try {
       const ai = new GoogleGenAI({ apiKey });
@@ -200,6 +238,15 @@ Return ONLY valid JSON without markdown formatting.`;
             isFallback: false
           };
         }
+        // Handle { Mon: [...], Tue: [...] } schema
+        const normalized = normalizeObjectSchedule(parsed);
+        if (normalized.length > 0) {
+          return {
+            subjects: Array.isArray(parsed.subjects) ? parsed.subjects : [],
+            timetable: normalized,
+            isFallback: false
+          };
+        }
       }
     } catch (sdkErr: any) {
       console.warn('[GeminiService] SDK call failed, attempting REST endpoint fallback:', sdkErr);
@@ -229,7 +276,7 @@ Return ONLY valid JSON without markdown formatting.`;
       if (!res.ok) {
         const errText = await res.text();
         console.error(`[GeminiService] Gemini REST API returned ${res.status}: ${errText}`);
-        throw new Error(`Gemini API 403/Forbidden or Error (${res.status}): ${errText}`);
+        throw new Error(`Gemini API Key invalid or expired. Check .env configuration. (${res.status})`);
       }
 
       const data = await res.json();
@@ -248,21 +295,26 @@ Return ONLY valid JSON without markdown formatting.`;
             isFallback: false
           };
         }
-        if (Array.isArray(parsedData)) {
+        const normalized = normalizeObjectSchedule(parsedData);
+        if (normalized.length > 0) {
           return {
-            subjects: [],
-            timetable: parsedData,
+            subjects: Array.isArray(parsedData.subjects) ? parsedData.subjects : [],
+            timetable: normalized,
             isFallback: false
           };
         }
       }
     }
 
-    throw new Error('AI Timetable Parsing Failed — Invalid format.');
+    throw new Error('AI Timetable Parsing Failed — Invalid JSON structure returned.');
   } catch (err: any) {
     console.error('[GeminiService] Error during Gemini OCR processing:', err);
-    // Return deterministic fallback when 403 or network failure occurs
-    return parseTimetableLocally(file.name);
+    const fallback = parseTimetableLocally(file.name);
+    return {
+      ...fallback,
+      isFallback: true,
+      errorMsg: 'Gemini API Key invalid or expired. Check .env configuration.'
+    };
   }
 }
 

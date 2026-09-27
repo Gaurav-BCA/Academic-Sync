@@ -126,44 +126,35 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
 
         // Retrieve student profile from Firestore users/{uid}
         const userSnap = await getDoc(doc(db, 'users', uid));
-        let sName = '';
-        let sRoll = '21CS045';
-        let sCode = 'CS-4051';
 
-        if (userSnap.exists()) {
-          const data = userSnap.data();
-          const registeredRole = data.role;
-
-          // STRICT ROLE GUARD FOR STUDENT GATE
-          if (registeredRole && registeredRole !== 'student') {
-            await auth.signOut();
-            resetOnboarding();
-            setIsStudentSignIn(true);
-            setStudentPassword('');
-            showToast('error', 'Access Denied: Faculty and Coordinator accounts cannot log in via Student Gate.', 'Access Denied');
-            setIsStudentLoading(false);
-            return;
-          }
-
-          sName = data.name || data.fullName || '';
-          sRoll = data.rollNumber || '21CS045';
-          sCode = data.classCode || 'CS-4051';
+        // STRICT FIRESTORE PROFILE & APPROVAL GUARD FOR STUDENT GATE
+        if (!userSnap.exists() || userSnap.data()?.status === 'REJECTED' || userSnap.data()?.approvalStatus === 'rejected') {
+          await auth.signOut();
+          resetOnboarding();
+          setIsStudentSignIn(true);
+          setStudentPassword('');
+          showToast('error', 'Account credentials not found in database or pending approval. Access denied.', 'Access Denied');
+          setIsStudentLoading(false);
+          return;
         }
 
-        // Recover missing profile gracefully from Auth metadata if DB record is absent
-        if (!sName) {
-          sName = userCred.user.displayName?.trim() || deriveNameFromEmail(studentEmail.trim(), 'Student');
-          // Auto-repair missing user record in Firestore
-          await setDoc(doc(db, 'users', uid), {
-            uid,
-            name: sName,
-            rollNumber: sRoll,
-            email: studentEmail.trim(),
-            classCode: sCode,
-            role: 'student',
-            createdAt: serverTimestamp()
-          }, { merge: true });
+        const data = userSnap.data();
+        const registeredRole = data.role;
+
+        // STRICT ROLE GUARD FOR STUDENT GATE
+        if (registeredRole && registeredRole !== 'student') {
+          await auth.signOut();
+          resetOnboarding();
+          setIsStudentSignIn(true);
+          setStudentPassword('');
+          showToast('error', 'Access Denied: Faculty and Coordinator accounts cannot log in via Student Gate.', 'Access Denied');
+          setIsStudentLoading(false);
+          return;
         }
+
+        const sName = data.name || data.fullName || userCred.user.displayName || 'Student';
+        const sRoll = data.rollNumber || '21CS045';
+        const sCode = data.classCode || 'CS-4051';
 
         showToast('success', `Welcome back, ${sName}! Signed in successfully.`);
         completeOnboarding('student', {
@@ -317,6 +308,19 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
 
         // Fetch coordinator user profile from Firestore users/{uid}
         const userSnap = await getDoc(doc(db, 'users', uid));
+
+        // STRICT FIRESTORE PROFILE & APPROVAL GUARD FOR COORDINATOR HUB
+        if (!userSnap.exists() || userSnap.data()?.status === 'REJECTED' || userSnap.data()?.approvalStatus === 'rejected') {
+          await auth.signOut();
+          resetOnboarding();
+          setActiveTab('coordinator');
+          setIsCoordSignIn(true);
+          setCoordPassword('');
+          showToast('error', 'Account credentials not found in database or pending approval. Access denied.', 'Access Denied');
+          setIsCoordSubmitting(false);
+          return;
+        }
+
         let cName = '';
         let cInst = 'Apex Inst. of Tech';
         let cBranch = 'Computer Science & Eng';
@@ -512,13 +516,13 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         const userSnap = await getDoc(doc(db, 'users', uid));
 
         // IF USER DOC DOES NOT EXIST OR STATUS IS REJECTED (PURGED BY COORDINATOR)
-        if (!userSnap.exists() || userSnap.data()?.status === 'REJECTED') {
+        if (!userSnap.exists() || userSnap.data()?.status === 'REJECTED' || userSnap.data()?.approvalStatus === 'rejected') {
           await auth.signOut();
           resetOnboarding();
           setActiveTab('teacher');
-          setIsTeacherSignIn(false); // AUTOMATICALLY REDIRECT TO TEACHER SIGN-UP VIEW
+          setIsTeacherSignIn(true);
           setTeacherPassword('');
-          showToast('error', 'No active account found for these credentials. Please sign up.', 'Account Not Found');
+          showToast('error', 'Account credentials not found in database or pending approval. Access denied.', 'Access Denied');
           setIsTeacherLoading(false);
           return;
         }

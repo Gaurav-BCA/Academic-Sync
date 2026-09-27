@@ -5,7 +5,7 @@ import {
   RECONCILIATION_LEDS
 } from '../data/mockData';
 import { db, auth } from '../services/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
   doc, 
   getDoc,
@@ -130,37 +130,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        setIsOnboarded(true);
         try {
           const userDocRef = doc(db, 'users', user.uid);
           const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const data = userDocSnap.data();
-            const role: UserRole = data.role === 'teacher' ? 'teacher' : data.role === 'coordinator' ? 'coordinator' : 'student';
-            const profileClassCode = data.classCode || (role === 'teacher' ? 'CS-4051' : 'CS-4051');
-            const profile: UserProfile = {
-              uid: user.uid,
-              fullName: data.name || data.fullName || user.displayName || 'User',
-              rollNumber: data.rollNumber || (role === 'coordinator' ? 'COORDINATOR' : role === 'teacher' ? 'FACULTY' : '21CS045'),
-              classCode: profileClassCode,
-              email: user.email || data.email || '',
-              institution: data.institution || 'Apex Inst. of Tech',
-              branch: data.branch || 'Computer Science & Eng',
-              semester: data.semester || data.term || 'Semester V',
-              department: data.department || (data.branch ? (data.branch.includes('BCA') ? 'BCA' : 'CSE') : 'BCA')
-            };
-
-            setUserRoleState(role);
-            setUserProfileState(profile);
-            setSelectedBatchState(profileClassCode);
-
+          
+          // STRICT FIRESTORE-ONLY AUTHENTICATION GUARD
+          if (!userDocSnap.exists() || userDocSnap.data()?.status === 'REJECTED' || userDocSnap.data()?.approvalStatus === 'rejected') {
+            console.warn('[AppContext] Blocking unauthorized or missing Firestore profile:', user.uid);
+            await signOut(auth);
+            setIsOnboarded(false);
+            setUserRoleState('student');
             try {
-              localStorage.setItem(LS_KEY_ONBOARDED, 'true');
-              localStorage.setItem(LS_KEY_ROLE, role);
-              localStorage.setItem(LS_KEY_PROFILE, JSON.stringify(profile));
-            } catch {
-              // noop
-            }
+              localStorage.removeItem(LS_KEY_ONBOARDED);
+              localStorage.removeItem(LS_KEY_ROLE);
+              localStorage.removeItem(LS_KEY_PROFILE);
+            } catch {}
+            return;
+          }
+
+          setIsOnboarded(true);
+          const data = userDocSnap.data();
+          const role: UserRole = data.role === 'teacher' ? 'teacher' : data.role === 'coordinator' ? 'coordinator' : 'student';
+          const profileClassCode = data.classCode || (role === 'teacher' ? 'CS-4051' : 'CS-4051');
+          const profile: UserProfile = {
+            uid: user.uid,
+            fullName: data.name || data.fullName || user.displayName || 'User',
+            rollNumber: data.rollNumber || (role === 'coordinator' ? 'COORDINATOR' : role === 'teacher' ? 'FACULTY' : '21CS045'),
+            classCode: profileClassCode,
+            email: user.email || data.email || '',
+            institution: data.institution || 'Apex Inst. of Tech',
+            branch: data.branch || 'Computer Science & Eng',
+            semester: data.semester || data.term || 'Semester V',
+            department: data.department || (data.branch ? (data.branch.includes('BCA') ? 'BCA' : 'CSE') : 'BCA')
+          };
+
+          setUserRoleState(role);
+          setUserProfileState(profile);
+          setSelectedBatchState(profileClassCode);
+
+          try {
+            localStorage.setItem(LS_KEY_ONBOARDED, 'true');
+            localStorage.setItem(LS_KEY_ROLE, role);
+            localStorage.setItem(LS_KEY_PROFILE, JSON.stringify(profile));
+          } catch {
+            // noop
           }
         } catch (err) {
           console.warn('[AppContext] Error fetching Firestore user record:', err);
@@ -204,6 +217,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const daysFull = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const daysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const currentDayIdx = new Date().getDay();
+
+      // SUNDAY OFF-DAY LOGIC: Sunday has 0 scheduled classes
+      if (currentDayIdx === 0) {
+        return [];
+      }
+
       const currentFull = daysFull[currentDayIdx].toLowerCase();
       const currentShort = daysShort[currentDayIdx].toLowerCase();
 
@@ -225,12 +244,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return flatSlots;
       }
 
-      // Ensure default status is strictly 'Upcoming' on page load / midnight reset
-      return timetableData.map((s: any, idx: number) => ({
-        ...s,
-        id: s.id || `slot-${idx}`,
-        status: s.status || 'Upcoming'
-      }));
+      // If no matching day slots found for today, return empty array
+      return [];
     };
 
     const unsubscribe = onSnapshot(batchDocRef, (snapshot) => {

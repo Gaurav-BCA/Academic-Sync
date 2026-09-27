@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Plus, 
@@ -13,10 +13,13 @@ import {
   Copy, 
   Sparkles,
   Layers,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  Upload
 } from 'lucide-react';
 import { db } from '../services/firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { parseTimetableWithGemini } from '../services/geminiService';
 
 export interface TimetableSlotItem {
   id: string;
@@ -104,6 +107,54 @@ export const EditTimetableModal: React.FC<EditTimetableModalProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copySuccessMsg, setCopySuccessMsg] = useState<string | null>(null);
+  const [isParsing, setIsParsing] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleAiAutoParse = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    setIsParsing(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await parseTimetableWithGemini(file);
+      if (result.errorMsg) {
+        setErrorMessage(result.errorMsg);
+      }
+
+      if (result.timetable && Array.isArray(result.timetable) && result.timetable.length > 0) {
+        const newMap: Record<string, TimetableSlotItem[]> = {};
+        WEEKDAYS.forEach(d => { newMap[d] = []; });
+
+        result.timetable.forEach((item: any) => {
+          const dayName = WEEKDAYS.find(w => w.toLowerCase() === item.day.toLowerCase() || w.toLowerCase().startsWith(item.day.toLowerCase().slice(0, 3)));
+          if (dayName && Array.isArray(item.slots)) {
+            newMap[dayName] = item.slots.map((s: any, idx: number) => ({
+              id: `slot-${dayName}-${idx}-${Date.now()}`,
+              time: s.time || '09:00 AM - 10:00 AM',
+              subject: s.subject || s.subjectName || 'Class Subject',
+              subjectName: s.subject || s.subjectName || 'Class Subject',
+              code: s.code || s.subjectCode || 'BCA 512',
+              subjectCode: s.code || s.subjectCode || 'BCA 512',
+              faculty: s.faculty || 'Faculty Instructor',
+              room: s.room || 'LH-1',
+              type: (s.type as any) || 'Lecture'
+            }));
+          }
+        });
+
+        setTimetableMap(newMap);
+        setCopySuccessMsg('AI Timetable OCR Completed! Form pre-filled for review.');
+        setTimeout(() => setCopySuccessMsg(null), 4000);
+      }
+    } catch (err: any) {
+      console.error("Gemini OCR error:", err);
+      setErrorMessage(err.message || 'Gemini API Key invalid or expired. Check .env configuration.');
+    } finally {
+      setIsParsing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Initialize day schedules from existing Firestore data or fallback defaults
   useEffect(() => {
@@ -348,6 +399,15 @@ export const EditTimetableModal: React.FC<EditTimetableModalProps> = ({
           </button>
         </div>
 
+        {/* Hidden File Input for Gemini OCR */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleAiAutoParse}
+          accept="image/*,.pdf"
+          className="hidden"
+        />
+
         {/* Day Selector Tabs */}
         <div className="bg-purple-50/80 border-b border-purple-100 p-3 px-6 flex items-center justify-between gap-3 overflow-x-auto shrink-0">
           <div className="flex items-center space-x-2">
@@ -375,15 +435,37 @@ export const EditTimetableModal: React.FC<EditTimetableModalProps> = ({
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={handleDuplicateToWeekdays}
-            title="Duplicate current day schedule to all weekdays (Mon-Fri)"
-            className="px-3 py-2 bg-white hover:bg-purple-100 border border-purple-300 text-purple-900 rounded-xl text-xs font-mono font-bold flex items-center space-x-1.5 shrink-0 transition-all"
-          >
-            <Copy className="w-3.5 h-3.5 text-purple-700" />
-            <span className="hidden sm:inline">Copy to Mon–Fri</span>
-          </button>
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isParsing}
+              title="Upload timetable document or image to auto-fill routine via Gemini AI"
+              className="px-3 py-2 bg-gradient-to-r from-purple-900 to-indigo-900 hover:from-purple-800 hover:to-indigo-800 disabled:opacity-50 text-white border border-purple-400/40 rounded-xl text-xs font-mono font-bold flex items-center space-x-1.5 shrink-0 transition-all shadow-sm"
+            >
+              {isParsing ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Parsing PDF/Image...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="hidden sm:inline">Auto-Parse via Gemini AI</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDuplicateToWeekdays}
+              title="Duplicate current day schedule to all weekdays (Mon-Fri)"
+              className="px-3 py-2 bg-white hover:bg-purple-100 border border-purple-300 text-purple-900 rounded-xl text-xs font-mono font-bold flex items-center space-x-1.5 shrink-0 transition-all"
+            >
+              <Copy className="w-3.5 h-3.5 text-purple-700" />
+              <span className="hidden sm:inline">Copy to Mon–Fri</span>
+            </button>
+          </div>
         </div>
 
         {/* Copy Success / Error Banner */}
