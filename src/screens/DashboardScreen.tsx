@@ -372,42 +372,43 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
 
       if (studentDocs.length > 0) {
         for (const st of studentDocs) {
-          const sLat = typeof st.lastLatitude === 'number' ? st.lastLatitude : geofence.latitude + (Math.random() * 0.0002 - 0.0001);
-          const sLng = typeof st.lastLongitude === 'number' ? st.lastLongitude : geofence.longitude + (Math.random() * 0.0002 - 0.0001);
+          const sLat = typeof st.lastLatitude === 'number'
+            ? st.lastLatitude
+            : (typeof st.latitude === 'number' ? st.latitude : (typeof st.lat === 'number' ? st.lat : (st.location && typeof st.location.latitude === 'number' ? st.location.latitude : null)));
+          
+          const sLng = typeof st.lastLongitude === 'number'
+            ? st.lastLongitude
+            : (typeof st.longitude === 'number' ? st.longitude : (typeof st.lng === 'number' ? st.lng : (st.location && typeof st.location.longitude === 'number' ? st.location.longitude : null)));
 
-          const distance = calculateHaversineDistance(sLat, sLng, geofence.latitude, geofence.longitude);
-          const isWithin = distance <= geofence.radiusMeters;
+          let isWithin = false;
+          let distance = 9999;
+
+          if (sLat !== null && sLng !== null && !isNaN(sLat) && !isNaN(sLng)) {
+            distance = calculateHaversineDistance(sLat, sLng, geofence.latitude, geofence.longitude);
+            isWithin = distance <= geofence.radiusMeters;
+          }
+
           if (isWithin) presentCount++;
 
           await addDoc(logsRef, {
             studentUid: st.uid || st.id,
             studentName: st.name || st.fullName || 'Student',
-            rollNumber: st.rollNumber || '21CS045',
+            rollNumber: st.rollNumber || 'N/A',
             classCode: activeCode,
             subjectName: slot.subjectName || slot.subject || 'Active Class',
             subjectCode: slot.subjectCode || slot.code || 'CS-501',
             status: isWithin ? 'PRESENT' : 'ABSENT',
             geofenceVerified: isWithin,
-            distanceMeters: distance,
+            distanceMeters: distance === 9999 ? null : distance,
+            reason: isWithin 
+              ? `GPS verified within radius (${distance}m <= ${geofence.radiusMeters}m)`
+              : (distance === 9999 ? 'No verified GPS coordinates recorded for student' : `Location outside classroom geofence (${distance}m > ${geofence.radiusMeters}m)`),
             facultyName: userProfile.fullName || 'Faculty Member',
             timestamp: serverTimestamp()
           });
         }
       } else {
-        presentCount = 1;
-        await addDoc(logsRef, {
-          studentUid: userProfile.uid || 'anon-student',
-          studentName: 'Batch Student',
-          rollNumber: '21CS045',
-          classCode: activeCode,
-          subjectName: slot.subjectName || slot.subject || 'Active Class',
-          subjectCode: slot.subjectCode || slot.code || 'CS-501',
-          status: 'PRESENT',
-          geofenceVerified: true,
-          distanceMeters: 25,
-          facultyName: userProfile.fullName || 'Faculty Member',
-          timestamp: serverTimestamp()
-        });
+        presentCount = 0;
       }
 
       setTeacherToast(`✓ Class Conducted! Student GPS verified (${presentCount}/${totalCount} Present). Slot status synced to Today's Schedule.`);
