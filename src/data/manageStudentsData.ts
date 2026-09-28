@@ -24,6 +24,7 @@ export interface StudentDetail {
   name: string;
   rollNumber: string;
   email?: string;
+  guardianEmail?: string;
   attendancePercentage?: number;
   status?: string;
   subjects: SubjectAttendance[];

@@ -59,6 +59,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
   const [showStudentPassword, setShowStudentPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [rollNumber, setRollNumber] = useState('');
+  const [guardianEmail, setGuardianEmail] = useState('');
   const [tokenInput, setTokenInput] = useState('');
   const [isStudentLoading, setIsStudentLoading] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
@@ -209,6 +210,11 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         setIsStudentLoading(false);
         return;
       }
+      if (!guardianEmail.trim()) {
+        showToast('error', 'Please enter your Guardian Email Address.');
+        setIsStudentLoading(false);
+        return;
+      }
       if (!tokenInput.trim()) {
         showToast('error', 'Please enter a valid 6-digit Class Code.');
         setIsStudentLoading(false);
@@ -257,6 +263,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
           fullName: fullName.trim(),
           rollNumber: rollNumber.trim(),
           email: studentEmail.trim(),
+          guardianEmail: guardianEmail.trim().toLowerCase(),
           classCode: formattedCode,
           role: 'student',
           createdAt: serverTimestamp()
@@ -266,6 +273,7 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
         completeOnboarding('student', {
           uid,
           email: studentEmail.trim(),
+          guardianEmail: guardianEmail.trim().toLowerCase(),
           fullName: fullName.trim(),
           rollNumber: rollNumber.trim(),
           classCode: formattedCode
@@ -928,6 +936,26 @@ export const OverviewGateScreen: React.FC<OverviewGateScreenProps> = ({ mode = '
                           onChange={(e) => setRollNumber(e.target.value)}
                           placeholder="e.g. 21CS045"
                           className="input-stealth w-full pl-11 pr-4 py-3.5 font-mono text-sm placeholder:text-neutral-400 text-neutral-900"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Guardian Email Address */}
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="text-xs font-mono text-neutral-700 uppercase block font-semibold tracking-wider mb-1.5">
+                        Guardian Email Address <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none z-10">
+                          <Mail className="w-4 h-4 text-amber-600" />
+                        </div>
+                        <input
+                          type="email"
+                          required
+                          value={guardianEmail}
+                          onChange={(e) => setGuardianEmail(e.target.value)}
+                          placeholder="parent.guardian@example.com"
+                          className="input-stealth w-full pl-11 pr-4 py-3.5 font-sans text-sm placeholder:text-neutral-400 text-neutral-900"
                         />
                       </div>
                     </div>

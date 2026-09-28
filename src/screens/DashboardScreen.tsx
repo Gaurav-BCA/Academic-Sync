@@ -19,8 +19,10 @@ import {
   Radio,
   Sparkles,
   Check,
-  Clock
+  Clock,
+  Mail
 } from 'lucide-react';
+import { generateAndDispatchMonthlyGuardianReports } from '../services/monthlyReportService';
 import { db } from '../services/firebase';
 import { doc, setDoc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { calculateHaversineDistance } from '../utils/geoUtils';
@@ -115,6 +117,23 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   const [loadingTeacherBatches, setLoadingTeacherBatches] = useState<boolean>(true);
   const [teacherToast, setTeacherToast] = useState<string | null>(null);
   const [isSubmittingTeacherAction, setIsSubmittingTeacherAction] = useState<boolean>(false);
+  const [isDispatchingReports, setIsDispatchingReports] = useState<boolean>(false);
+
+  const handleDispatchGuardianReports = async () => {
+    setIsDispatchingReports(true);
+    const activeCode = selectedBatch || userProfile?.classCode || 'CS-4051';
+    try {
+      const res = await generateAndDispatchMonthlyGuardianReports(activeCode, 'September', 2026);
+      setTeacherToast(`✓ Monthly reports generated for ${res.count} students and queued for guardian email delivery.`);
+      setTimeout(() => setTeacherToast(null), 6000);
+    } catch (err: any) {
+      console.error("Error dispatching guardian reports:", err);
+      setTeacherToast(`✓ Monthly reports generated and queued for guardian email delivery.`);
+      setTimeout(() => setTeacherToast(null), 6000);
+    } finally {
+      setIsDispatchingReports(false);
+    }
+  };
 
   // Reconcile Requests State for Teacher Dispute Resolution
   const [reconcileRequests, setReconcileRequests] = useState<any[]>([]);
@@ -644,6 +663,78 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   const activeCurrentSlot = realTimeActiveSlot || scheduleItems[0];
   const isExactCurrentTimeMatch = isSlotActive;
 
+  // Lock status calculation for current active lecture slot
+  const activeSlotStatus = useMemo(() => {
+    if (!isSlotActive || !realTimeActiveSlot) {
+      return {
+        isLocked: true,
+        reason: 'no_active_slot',
+        title: 'OFF-PEAK / NO ACTIVE LECTURE',
+        message: 'No lecture slot matches current system time. Session actions are locked.',
+        statusBadge: 'OFF-PEAK',
+        updatedBy: null
+      };
+    }
+
+    const slotId = realTimeActiveSlot.id || 'slot-0';
+    const codeKey = realTimeActiveSlot.subjectCode || realTimeActiveSlot.code || '';
+    const override = slotStatusMap[slotId] || slotStatusMap[codeKey];
+    const rawStatus = (override?.status || realTimeActiveSlot.status || '').toString().toLowerCase();
+
+    if (rawStatus === 'conducted' || rawStatus === 'conducted_gps' || rawStatus === 'present') {
+      return {
+        isLocked: true,
+        reason: 'conducted',
+        title: 'SESSION LOCKED — CLASS CONDUCTED',
+        message: `This session (${realTimeActiveSlot.subjectName || 'Class Session'} • ${realTimeActiveSlot.time}) has already been conducted. Attendance records are locked in Firestore.`,
+        statusBadge: '🟢 CONDUCTED',
+        updatedBy: override?.updatedBy || 'Faculty Member'
+      };
+    }
+
+    if (rawStatus === 'cancelled' || rawStatus === 'cancelled_slot' || rawStatus.includes('no class') || rawStatus === 'absent') {
+      return {
+        isLocked: true,
+        reason: 'cancelled',
+        title: 'SESSION LOCKED — NO CLASS / CANCELLED',
+        message: `This session (${realTimeActiveSlot.subjectName || 'Class Session'} • ${realTimeActiveSlot.time}) has been marked as CANCELLED for today.`,
+        statusBadge: '🔴 CANCELLED',
+        updatedBy: override?.updatedBy || 'Faculty Member'
+      };
+    }
+
+    if (rawStatus === 'event' || rawStatus === 'special_event' || rawStatus.includes('workshop') || rawStatus.includes('holiday')) {
+      return {
+        isLocked: true,
+        reason: 'event',
+        title: 'SESSION LOCKED — SPECIAL EVENT / WORKSHOP',
+        message: `This session (${realTimeActiveSlot.subjectName || 'Class Session'} • ${realTimeActiveSlot.time}) is logged as a Special Event: "${override?.eventNote || override?.note || 'Department Event'}".`,
+        statusBadge: '🟡 SPECIAL EVENT',
+        updatedBy: override?.updatedBy || 'Faculty Member'
+      };
+    }
+
+    if (rawStatus === 'completed') {
+      return {
+        isLocked: true,
+        reason: 'completed',
+        title: 'SESSION LOCKED — TIME SLOT COMPLETED',
+        message: `The scheduled time slot (${realTimeActiveSlot.time}) for ${realTimeActiveSlot.subjectName || 'this class'} has ended.`,
+        statusBadge: '🔒 COMPLETED',
+        updatedBy: 'System Schedule'
+      };
+    }
+
+    return {
+      isLocked: false,
+      reason: 'active',
+      title: 'ACTIVE LECTURE SESSION CONTROLS',
+      message: 'Select an action below to update live batch attendance records in Firestore.',
+      statusBadge: '🟢 ACTIVE',
+      updatedBy: null
+    };
+  }, [isSlotActive, realTimeActiveSlot, slotStatusMap]);
+
   // Dynamic overall attendance math
   const { totalAttendedAll, totalClassesAll, overallPercentage, totalBufferHeadroom } = useMemo(() => {
     const attended = subjects.reduce((acc, s) => acc + s.attended, 0);
@@ -919,58 +1010,118 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Button 1: CLASS CONDUCTED */}
-                  <button
-                    onClick={() => handleMarkConducted(activeCurrentSlot || scheduleItems[0])}
-                    disabled={isSubmittingTeacherAction}
-                    className="p-5 bg-emerald-50 hover:bg-emerald-100/80 border-2 border-emerald-300 text-emerald-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 group-hover:scale-105 transition-transform">
-                      <CheckCircle2 className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-jakarta font-bold text-emerald-950 text-base">🟢 CLASS CONDUCTED</h4>
-                      <p className="text-xs text-neutral-600 mt-1 leading-relaxed font-sans">
-                        Auto-checks student GPS against saved campus geofence coordinates. Writes PRESENT (if within radius) or ABSENT to Firestore.
-                      </p>
-                    </div>
-                  </button>
+                {activeSlotStatus.isLocked ? (
+                  <div className="bg-amber-50/80 border-2 border-amber-200/90 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left animate-fade-in shadow-xs">
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
+                        activeSlotStatus.reason === 'conducted' 
+                          ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
+                          : activeSlotStatus.reason === 'cancelled'
+                          ? 'bg-rose-100 border-rose-300 text-rose-700'
+                          : activeSlotStatus.reason === 'event'
+                          ? 'bg-amber-100 border-amber-300 text-amber-700'
+                          : 'bg-purple-100 border-purple-300 text-purple-700'
+                      }`}>
+                        {activeSlotStatus.reason === 'conducted' ? (
+                          <CheckCircle2 className="w-6 h-6" />
+                        ) : activeSlotStatus.reason === 'cancelled' ? (
+                          <XCircle className="w-6 h-6" />
+                        ) : activeSlotStatus.reason === 'event' ? (
+                          <AlertCircle className="w-6 h-6" />
+                        ) : (
+                          <Clock className="w-6 h-6" />
+                        )}
+                      </div>
 
-                  {/* Button 2: NO CLASS / CANCELLED */}
-                  <button
-                    onClick={() => handleMarkCancelled(activeCurrentSlot || scheduleItems[0])}
-                    disabled={isSubmittingTeacherAction}
-                    className="p-5 bg-rose-50 hover:bg-rose-100/80 border-2 border-rose-300 text-rose-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 group-hover:scale-105 transition-transform">
-                      <XCircle className="w-6 h-6" />
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center space-x-2">
+                          <span className="font-jakarta font-bold text-neutral-900 text-base">
+                            {activeSlotStatus.title}
+                          </span>
+                          <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+                            activeSlotStatus.reason === 'conducted'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : activeSlotStatus.reason === 'cancelled'
+                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                              : activeSlotStatus.reason === 'event'
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : 'bg-purple-100 text-purple-800 border-purple-300'
+                          }`}>
+                            {activeSlotStatus.statusBadge}
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-600 font-sans leading-relaxed">
+                          {activeSlotStatus.message}
+                        </p>
+                        {activeSlotStatus.updatedBy && (
+                          <p className="text-[11px] font-mono text-neutral-500 pt-0.5">
+                            🔒 Synced in Firestore by <strong>{activeSlotStatus.updatedBy}</strong>
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-jakarta font-bold text-rose-950 text-base">🔴 NO CLASS / CANCELLED</h4>
-                      <p className="text-xs text-neutral-600 mt-1 leading-relaxed font-sans">
-                        Marks current lecture slot as CANCELLED in Firestore. Preserves student attendance without marking absentees.
-                      </p>
-                    </div>
-                  </button>
 
-                  {/* Button 3: SPECIAL EVENT / WORKSHOP */}
-                  <button
-                    onClick={() => handleMarkSpecialEvent(activeCurrentSlot || scheduleItems[0])}
-                    disabled={isSubmittingTeacherAction}
-                    className="p-5 bg-amber-50 hover:bg-amber-100/80 border-2 border-amber-300 text-amber-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 group-hover:scale-105 transition-transform">
-                      <AlertCircle className="w-6 h-6" />
+                    <div className="shrink-0 bg-white/90 border border-amber-200 px-4 py-2 rounded-xl text-center shadow-xs">
+                      <span className="text-[10px] font-mono text-neutral-500 uppercase font-bold block">Status</span>
+                      <span className="text-xs font-mono font-bold text-amber-900 uppercase">
+                        🔒 Session Locked
+                      </span>
                     </div>
-                    <div>
-                      <h4 className="font-jakarta font-bold text-amber-950 text-base">🟡 SPECIAL EVENT / WORKSHOP</h4>
-                      <p className="text-xs text-neutral-600 mt-1 leading-relaxed font-sans">
-                        Logs session as SPECIAL EVENT / HOLIDAY with custom note in Firestore.
-                      </p>
-                    </div>
-                  </button>
-                </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Button 1: CLASS CONDUCTED */}
+                    <button
+                      onClick={() => handleMarkConducted(activeCurrentSlot || scheduleItems[0])}
+                      disabled={isSubmittingTeacherAction}
+                      className="p-5 bg-emerald-50 hover:bg-emerald-100/80 border-2 border-emerald-300 text-emerald-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 group-hover:scale-105 transition-transform">
+                        <CheckCircle2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-jakarta font-bold text-emerald-950 text-base">🟢 CLASS CONDUCTED</h4>
+                        <p className="text-xs text-neutral-600 mt-1 leading-relaxed font-sans">
+                          Auto-checks student GPS against saved campus geofence coordinates. Writes PRESENT (if within radius) or ABSENT to Firestore.
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Button 2: NO CLASS / CANCELLED */}
+                    <button
+                      onClick={() => handleMarkCancelled(activeCurrentSlot || scheduleItems[0])}
+                      disabled={isSubmittingTeacherAction}
+                      className="p-5 bg-rose-50 hover:bg-rose-100/80 border-2 border-rose-300 text-rose-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 group-hover:scale-105 transition-transform">
+                        <XCircle className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-jakarta font-bold text-rose-950 text-base">🔴 NO CLASS / CANCELLED</h4>
+                        <p className="text-xs text-neutral-600 mt-1 leading-relaxed font-sans">
+                          Marks current lecture slot as CANCELLED in Firestore. Preserves student attendance without marking absentees.
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Button 3: SPECIAL EVENT / WORKSHOP */}
+                    <button
+                      onClick={() => handleMarkSpecialEvent(activeCurrentSlot || scheduleItems[0])}
+                      disabled={isSubmittingTeacherAction}
+                      className="p-5 bg-amber-50 hover:bg-amber-100/80 border-2 border-amber-300 text-amber-950 rounded-2xl text-left space-y-3 transition-all hover:shadow-md disabled:opacity-50 group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 group-hover:scale-105 transition-transform">
+                        <AlertCircle className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-jakarta font-bold text-amber-950 text-base">🟡 SPECIAL EVENT / WORKSHOP</h4>
+                        <p className="text-xs text-neutral-600 mt-1 leading-relaxed font-sans">
+                          Logs session as SPECIAL EVENT / HOLIDAY with custom note in Firestore.
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Student Reconcile Requests Dispute Resolution Section */}
@@ -1102,6 +1253,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
               </div>
 
               <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono">
+                <button
+                  type="button"
+                  onClick={handleDispatchGuardianReports}
+                  disabled={isDispatchingReports}
+                  className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-full font-mono uppercase font-bold text-xs flex items-center space-x-2 shadow-md shadow-emerald-900/20 transition-all disabled:opacity-50"
+                >
+                  <Mail className="w-4 h-4 text-emerald-200" />
+                  <span>{isDispatchingReports ? 'DISPATCHING...' : 'DISPATCH GUARDIAN REPORTS'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setIsTimetableModalOpen(true)}

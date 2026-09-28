@@ -22,6 +22,7 @@ export interface UserProfile {
   rollNumber: string;
   classCode: string;
   email?: string;
+  guardianEmail?: string;
   institution?: string;
   branch?: string;
   semester?: string;
@@ -159,6 +160,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             rollNumber: data.rollNumber || (role === 'coordinator' ? 'COORDINATOR' : role === 'teacher' ? 'FACULTY' : '21CS045'),
             classCode: profileClassCode,
             email: user.email || data.email || '',
+            guardianEmail: data.guardianEmail || '',
             institution: data.institution || 'Apex Inst. of Tech',
             branch: data.branch || 'Computer Science & Eng',
             semester: data.semester || data.term || 'Semester V',

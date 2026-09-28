@@ -30,6 +30,7 @@ import { useApp } from '../context/AppContext';
 import { useOnboarding } from '../context/OnboardingContext';
 import { calculateStudentAttendanceStats } from '../utils/attendanceMath';
 import { EditTimetableModal } from '../components/EditTimetableModal';
+import { generateAndDispatchMonthlyGuardianReports } from '../services/monthlyReportService';
 
 const LS_STUDENTS_KEY = 'academicsync_managedStudents';
 const LS_AUDIT_KEY = 'academicsync_auditLogs';
@@ -39,8 +40,10 @@ export const ManageStudentsScreen: React.FC = () => {
   const { coordinatorProfile } = useOnboarding();
   const currentBatchCode = selectedBatch || userProfile?.classCode || batchData?.classCode || coordinatorProfile?.classCode || 'CS-4051';
 
-  // Initialize students state strictly as empty array []
-  const [students, setStudents] = useState<StudentDetail[]>([]);
+  // Raw state from Firestore real-time listeners
+  const [rawStudents, setRawStudents] = useState<StudentDetail[]>([]);
+  const [rawAttendanceLogs, setRawAttendanceLogs] = useState<any[]>([]);
+  const [rawClassSessions, setRawClassSessions] = useState<any[]>([]);
 
   // Initialize audit logs strictly as empty array []
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -60,6 +63,116 @@ export const ManageStudentsScreen: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showAuditLogsView, setShowAuditLogsView] = useState(false);
   const [isTimetableModalOpen, setIsTimetableModalOpen] = useState(false);
+  const [isGeneratingReports, setIsGeneratingReports] = useState(false);
+
+  const handleGenerateGuardianReports = async () => {
+    setIsGeneratingReports(true);
+    const RESEND_KEY = import.meta.env.VITE_RESEND_API_KEY || '';
+
+    const targetStudents = students && students.length > 0 ? students : rawStudents;
+
+    if (!targetStudents || targetStudents.length === 0) {
+      alert("No students found in the active batch roster.");
+      setIsGeneratingReports(false);
+      return;
+    }
+
+    let sentCount = 0;
+
+    for (const student of targetStudents) {
+      const gEmail = student.guardianEmail || student.email || '';
+      const sFullName = student.name || (student as any).fullName || 'Student';
+      const sRoll = student.rollNumber || 'N/A';
+      const sPct = student.attendancePercentage !== undefined ? student.attendancePercentage : 0;
+      const sStatus = student.status || (sPct >= 75 ? 'SAFE ZONE' : 'AT RISK');
+
+      if (!gEmail || !gEmail.includes('@')) {
+        console.error(`Invalid email for ${sFullName}: ${gEmail}`);
+        continue;
+      }
+
+      try {
+        console.log(`Attempting Resend Email Dispatch to: ${gEmail}`);
+        
+        const payload = JSON.stringify({
+          from: "Academic-Sync <onboarding@resend.dev>",
+          to: [gEmail.trim()],
+          subject: `Monthly Attendance Report - ${sFullName} (${sPct}% - ${sStatus})`,
+          html: `
+            <div style="padding:20px; font-family:sans-serif; border:1px solid #ccc; border-radius:8px;">
+              <h2>Academic-Sync Monthly Attendance Report</h2>
+              <p>Dear Guardian,</p>
+              <p>Student Name: <b>${sFullName}</b> (Roll No: ${sRoll})</p>
+              <p>Overall Attendance: <b>${sPct}%</b></p>
+              <p>Status: <b style="color:${sPct >= 75 ? 'green' : 'red'};">${sStatus}</b></p>
+            </div>
+          `
+        });
+
+        const headers = {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${RESEND_KEY.trim()}`
+        };
+
+        let response: Response | null = null;
+        try {
+          response = await fetch("/api-resend/emails", {
+            method: "POST",
+            headers,
+            body: payload
+          });
+        } catch (proxyErr) {
+          console.warn("Vite proxy fetch failed, trying direct/CORS proxy fallback...", proxyErr);
+        }
+
+        if (!response || !response.ok) {
+          try {
+            const corsRes = await fetch("https://corsproxy.io/?" + encodeURIComponent("https://api.resend.com/emails"), {
+              method: "POST",
+              headers,
+              body: payload
+            });
+            if (corsRes.ok || !response) {
+              response = corsRes;
+            }
+          } catch (corsErr) {
+            console.warn("CORS proxy fetch failed:", corsErr);
+          }
+        }
+
+        if (!response) {
+          response = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers,
+            body: payload
+          });
+        }
+
+        const resData = await response.json();
+        console.log(`Resend response for ${gEmail}:`, resData);
+
+        if (!response.ok) {
+          alert(`Resend Error for ${gEmail}: ${resData.message || JSON.stringify(resData)}`);
+        } else {
+          sentCount++;
+          alert(`Email successfully sent to ${gEmail}! Check inbox/spam.`);
+        }
+      } catch (err: any) {
+        console.error(`Fetch error for ${gEmail}:`, err);
+        alert(`Email Dispatch Failed for ${gEmail}: ${err.message || 'Network error'}`);
+      }
+    }
+
+    try {
+      await generateAndDispatchMonthlyGuardianReports(currentBatchCode, 'September', 2026);
+    } catch (e) {
+      console.warn("Firestore monthlyReports write notice:", e);
+    }
+
+    setToastMessage(`Monthly reports generated for ${sentCount} student(s) and sent via Resend.`);
+    setTimeout(() => setToastMessage(null), 6000);
+    setIsGeneratingReports(false);
+  };
 
   // Date Accordion expansion state
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
@@ -112,7 +225,7 @@ export const ManageStudentsScreen: React.FC = () => {
   }, [batchData]);
 
   // ──────────────────────────────────────────
-  // REAL-TIME FIRESTORE LISTENER FOR STUDENTS
+  // 1. REAL-TIME FIRESTORE LISTENER FOR STUDENTS
   // Query users collection where classCode == currentBatchCode and role == "student"
   // ──────────────────────────────────────────
   useEffect(() => {
@@ -127,7 +240,7 @@ export const ManageStudentsScreen: React.FC = () => {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (snapshot.empty) {
-        setStudents([]);
+        setRawStudents([]);
         return;
       }
 
@@ -139,6 +252,7 @@ export const ManageStudentsScreen: React.FC = () => {
           name: data.fullName || data.name || 'Student',
           rollNumber: data.rollNumber || 'N/A',
           email: data.email || 'N/A',
+          guardianEmail: data.guardianEmail || (data.rollNumber ? `${data.rollNumber.toLowerCase()}@guardian.edu` : 'N/A'),
           attendancePercentage: data.attendancePercentage !== undefined ? data.attendancePercentage : (data.attendance !== undefined ? data.attendance : 0),
           status: data.status || 'Active',
           subjects: activeBatchSubjects,
@@ -146,14 +260,117 @@ export const ManageStudentsScreen: React.FC = () => {
         });
       });
 
-      setStudents(liveStudents);
+      setRawStudents(liveStudents);
     }, (err) => {
       console.warn("Firestore student roster listener notice:", err);
-      setStudents([]);
+      setRawStudents([]);
     });
 
     return () => unsubscribe();
   }, [currentBatchCode, activeBatchSubjects]);
+
+  // ──────────────────────────────────────────
+  // 2. REAL-TIME FIRESTORE LISTENER FOR ATTENDANCE LOGS
+  // Query batches/{currentBatchCode}/attendanceLogs
+  // ──────────────────────────────────────────
+  useEffect(() => {
+    if (!currentBatchCode) return;
+
+    const logsRef = collection(db, `batches/${currentBatchCode}/attendanceLogs`);
+    const unsubscribe = onSnapshot(logsRef, (snapshot) => {
+      const logs: any[] = [];
+      snapshot.forEach(docSnap => logs.push({ id: docSnap.id, ...docSnap.data() }));
+      setRawAttendanceLogs(logs);
+    }, (err) => {
+      console.warn("Firestore attendanceLogs listener notice:", err);
+      setRawAttendanceLogs([]);
+    });
+
+    return () => unsubscribe();
+  }, [currentBatchCode]);
+
+  // ──────────────────────────────────────────
+  // 3. REAL-TIME FIRESTORE LISTENER FOR CLASS SESSIONS
+  // Query classSessions collection where batchId == currentBatchCode
+  // ──────────────────────────────────────────
+  useEffect(() => {
+    if (!currentBatchCode) return;
+
+    const sessionsRef = collection(db, 'classSessions');
+    const q = query(sessionsRef, where('batchId', '==', currentBatchCode));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const sessions: any[] = [];
+      snapshot.forEach(docSnap => sessions.push({ id: docSnap.id, ...docSnap.data() }));
+      setRawClassSessions(sessions);
+    }, (err) => {
+      console.warn("Firestore classSessions listener notice:", err);
+      setRawClassSessions([]);
+    });
+
+    return () => unsubscribe();
+  }, [currentBatchCode]);
+
+  // ──────────────────────────────────────────
+  // 4. UNIFIED DYNAMIC REAL-TIME METRICS COMPUTATION
+  // Compute overall percentage, status (COMPLIANT vs AT RISK), and subject stats
+  // ──────────────────────────────────────────
+  const students = useMemo(() => {
+    if (!rawStudents || rawStudents.length === 0) return [];
+
+    return rawStudents.map((student) => {
+      const studentLogs = rawAttendanceLogs.filter(l => 
+        l.studentUid === student.id || l.studentId === student.id || l.rollNumber === student.rollNumber
+      );
+
+      const updatedSubjects: SubjectAttendance[] = activeBatchSubjects.map(sub => {
+        const subCodeUpper = sub.subjectCode.toUpperCase();
+        const subLogs = studentLogs.filter(l =>
+          (l.subjectCode && l.subjectCode.toUpperCase() === subCodeUpper) ||
+          (l.subjectName && l.subjectName.toLowerCase().includes(sub.subjectName.toLowerCase()))
+        );
+
+        const allBatchSubLogs = rawAttendanceLogs.filter(l =>
+          (l.subjectCode && l.subjectCode.toUpperCase() === subCodeUpper) ||
+          (l.subjectName && l.subjectName.toLowerCase().includes(sub.subjectName.toLowerCase()))
+        );
+
+        const subAttended = subLogs.filter(l =>
+          l.status === 'PRESENT' || l.status === 'Present' || l.status === 'present'
+        ).length;
+
+        const subTotal = subLogs.length > 0
+          ? subLogs.length
+          : (allBatchSubLogs.length > 0 ? Array.from(new Set(allBatchSubLogs.map(l => l.date || l.timestamp || l.id))).length : 0);
+
+        const subPct = subTotal > 0 ? Math.round((subAttended / subTotal) * 1000) / 10 : 0;
+
+        return {
+          ...sub,
+          attended: subAttended,
+          total: subTotal,
+          percentage: subPct
+        };
+      });
+
+      const totalAttended = updatedSubjects.reduce((acc, s) => acc + s.attended, 0);
+      const totalConducted = updatedSubjects.reduce((acc, s) => acc + s.total, 0);
+
+      const overallPct = totalConducted > 0
+        ? Math.round((totalAttended / totalConducted) * 1000) / 10
+        : (studentLogs.length > 0
+            ? Math.round((studentLogs.filter(l => l.status === 'PRESENT' || l.status === 'Present' || l.status === 'present').length / studentLogs.length) * 1000) / 10
+            : (student.attendancePercentage || 0));
+
+      const statusStr = overallPct >= 75.0 ? 'COMPLIANT' : 'AT RISK';
+
+      return {
+        ...student,
+        attendancePercentage: overallPct,
+        status: statusStr,
+        subjects: updatedSubjects
+      };
+    });
+  }, [rawStudents, rawAttendanceLogs, rawClassSessions, activeBatchSubjects]);
 
   // ──────────────────────────────────────────
   // REAL-TIME FIRESTORE LISTENER FOR AUDIT LOGS
@@ -397,12 +614,29 @@ export const ManageStudentsScreen: React.FC = () => {
       console.warn("Audit log write error:", err);
     }
 
-    // 2. Update Students state
-    setStudents(prevStudents => {
+    // 2. Persist attendance log override to Firestore attendanceLogs collection
+    try {
+      addDoc(collection(db, `batches/${currentBatchCode}/attendanceLogs`), {
+        studentUid: studentId,
+        studentName: studentObj?.name || 'Student',
+        rollNumber: studentObj?.rollNumber || 'N/A',
+        classCode: currentBatchCode,
+        subjectCode: lecture.subjectCode,
+        subjectName: lecture.subjectName,
+        status: newStatus === 'Present' ? 'PRESENT' : 'ABSENT',
+        date: lecture.date,
+        reason: editReason.trim(),
+        editedBy: 'Class Coordinator',
+        timestamp: new Date().toISOString()
+      }).catch(err => console.warn("Firestore attendanceLogs override error:", err));
+    } catch (err) {
+      console.warn("Attendance log override write error:", err);
+    }
+
+    // 3. Update rawStudents state locally for instant UI responsiveness
+    setRawStudents(prevStudents => {
       return prevStudents.map(student => {
         if (student.id !== studentId) return student;
-
-        // Update lecture record
         const updatedLectures = student.lectures.map(lec => {
           if (lec.id !== lecture.id) return lec;
           return {
@@ -413,31 +647,8 @@ export const ManageStudentsScreen: React.FC = () => {
             editReason: editReason.trim()
           };
         });
-
-        // Recalculate subject attendance count if status changed
-        let updatedSubjects = student.subjects;
-        if (oldStatus !== newStatus) {
-          let delta = 0;
-          if (oldStatus === 'Present' && newStatus !== 'Present') delta = -1;
-          if (oldStatus !== 'Present' && newStatus === 'Present') delta = 1;
-
-          if (delta !== 0) {
-            updatedSubjects = student.subjects.map(sub => {
-              if (sub.subjectCode !== lecture.subjectCode) return sub;
-              const newAttended = Math.max(0, Math.min(sub.total, sub.attended + delta));
-              const newPct = Math.round((newAttended / sub.total) * 1000) / 10;
-              return {
-                ...sub,
-                attended: newAttended,
-                percentage: newPct
-              };
-            });
-          }
-        }
-
         return {
           ...student,
-          subjects: updatedSubjects,
           lectures: updatedLectures
         };
       });
@@ -477,7 +688,17 @@ export const ManageStudentsScreen: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleGenerateGuardianReports}
+            disabled={isGeneratingReports}
+            className="px-4 py-2 rounded-full text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-md shadow-emerald-900/20 flex items-center space-x-2 transition-all disabled:opacity-50"
+          >
+            <Mail className="w-4 h-4 text-emerald-200" />
+            <span>{isGeneratingReports ? 'DISPATCHING REPORTS...' : 'Generate & Dispatch Monthly Guardian Reports'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsTimetableModalOpen(true)}
@@ -659,7 +880,8 @@ export const ManageStudentsScreen: React.FC = () => {
                     <tr className="border-b border-amber-100 text-neutral-400 text-[10px] font-mono uppercase tracking-wider">
                       <th className="py-3.5 px-3">FULL NAME</th>
                       <th className="py-3.5 px-3">ROLL NUMBER</th>
-                      <th className="py-3.5 px-3">EMAIL ADDRESS</th>
+                      <th className="py-3.5 px-3">STUDENT EMAIL</th>
+                      <th className="py-3.5 px-3">GUARDIAN EMAIL</th>
                       <th className="py-3.5 px-3 text-right">OVERALL ATTENDANCE %</th>
                       <th className="py-3.5 px-3 text-center">STATUS</th>
                       <th className="py-3.5 px-3 text-right">ACTION</th>
@@ -689,6 +911,12 @@ export const ManageStudentsScreen: React.FC = () => {
                             <div className="flex items-center space-x-1.5">
                               <Mail className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
                               <span>{student.email || 'N/A'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-3 text-neutral-600 font-sans text-xs">
+                            <div className="flex items-center space-x-1.5 text-amber-800 font-medium">
+                              <Mail className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>{student.guardianEmail || 'N/A'}</span>
                             </div>
                           </td>
                           <td className="py-3.5 px-3 text-right font-jakarta font-bold text-neutral-900 text-sm tnum">
@@ -748,6 +976,8 @@ export const ManageStudentsScreen: React.FC = () => {
                     <span>Roll No: <strong className="text-neutral-800 tnum">{selectedStudent.rollNumber}</strong></span>
                     <span>•</span>
                     <span>Email: <strong className="text-neutral-800">{selectedStudent.email || 'N/A'}</strong></span>
+                    <span>•</span>
+                    <span>Guardian Email: <strong className="text-amber-800">{selectedStudent.guardianEmail || 'N/A'}</strong></span>
                     <span>•</span>
                     <span>Batch Code: <strong className="text-[#FF6B4B] font-bold">{currentBatchCode}</strong></span>
                   </div>

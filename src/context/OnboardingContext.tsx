@@ -8,6 +8,7 @@ export type UserRole = 'student' | 'coordinator' | 'teacher' | null;
 export interface StudentProfile {
   uid?: string;
   email?: string;
+  guardianEmail?: string;
   fullName: string;
   rollNumber: string;
   classCode: string;
@@ -134,6 +135,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const profile: StudentProfile = {
                   uid: user.uid,
                   email: user.email || data.email || '',
+                  guardianEmail: data.guardianEmail || '',
                   fullName: data.name || data.fullName || 'Student',
                   rollNumber: data.rollNumber || '21CS045',
                   classCode: data.classCode || 'CS-4051'
