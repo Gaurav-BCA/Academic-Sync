@@ -39,29 +39,32 @@ export const FacultyApprovalsScreen: React.FC = () => {
   // Real-time Firestore Listener for Pending and Approved Teachers
   useEffect(() => {
     const usersRef = collection(db, 'users');
-    const qTeachers = query(usersRef, where('role', '==', 'teacher'));
 
-    const unsubscribe = onSnapshot(qTeachers, (snapshot) => {
+    const unsubscribe = onSnapshot(usersRef, (snapshot) => {
       const pendingList: PendingTeacher[] = [];
       const approvedList: PendingTeacher[] = [];
 
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        const teacherObj: PendingTeacher = {
-          id: docSnap.id,
-          uid: data.uid || docSnap.id,
-          name: data.name || data.fullName || 'Faculty Member',
-          email: data.email || 'N/A',
-          department: (data.department || 'BCA').toUpperCase(),
-          role: data.role || 'teacher',
-          status: data.status || 'PENDING_APPROVAL',
-          createdAt: data.createdAt
-        };
+        const roleStr = (data.role || '').toString().toLowerCase();
 
-        if (teacherObj.status === 'PENDING_APPROVAL') {
-          pendingList.push(teacherObj);
-        } else if (teacherObj.status === 'APPROVED') {
-          approvedList.push(teacherObj);
+        if (roleStr === 'teacher' || roleStr === 'faculty') {
+          const teacherObj: PendingTeacher = {
+            id: docSnap.id,
+            uid: data.uid || docSnap.id,
+            name: data.name || data.fullName || 'Faculty Member',
+            email: data.email || 'N/A',
+            department: (data.department || data.branch || 'BCA').toUpperCase(),
+            role: data.role || 'teacher',
+            status: data.status || 'PENDING_APPROVAL',
+            createdAt: data.createdAt
+          };
+
+          if (teacherObj.status === 'APPROVED') {
+            approvedList.push(teacherObj);
+          } else {
+            pendingList.push(teacherObj);
+          }
         }
       });
 
