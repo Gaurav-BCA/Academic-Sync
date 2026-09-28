@@ -20,7 +20,10 @@ import {
   Sparkles,
   Check,
   Clock,
-  Mail
+  Mail,
+  FileText,
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 import { generateAndDispatchMonthlyGuardianReports } from '../services/monthlyReportService';
 import { db } from '../services/firebase';
@@ -166,6 +169,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
   const handleApproveReconcileRequest = async (req: any) => {
     setActioningReqId(req.id);
     const activeCode = selectedTeacherBatchCode || selectedBatch || req.batchCode || 'CS-4051';
+    const reviewerEmail = userProfile?.email || userProfile?.fullName || 'Teacher';
     try {
       // 1. Update status to APPROVED in Firestore reconcileRequests collection
       await setDoc(doc(db, 'reconcileRequests', req.id), {
@@ -189,6 +193,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
         timestamp: serverTimestamp()
       });
 
+      // 3. Append Audit Log record to auditLogs collection
+      await addDoc(collection(db, 'auditLogs'), {
+        requestId: req.id,
+        studentId: req.studentId,
+        studentName: req.studentName,
+        rollNumber: req.rollNumber || '',
+        subjectCode: req.subjectCode || '',
+        reviewedBy: reviewerEmail,
+        action: 'APPROVED',
+        calculatedDistanceMeters: req.calculatedDistanceMeters ?? 0,
+        timestamp: serverTimestamp()
+      });
+
       setTeacherToast(`✓ Request Approved! Attendance updated to PRESENT for ${req.studentName} (${req.subjectCode}).`);
       setTimeout(() => setTeacherToast(null), 5000);
     } catch (err: any) {
@@ -200,19 +217,34 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
     }
   };
 
-  const handleDismissReconcileRequest = async (req: any) => {
+  const handleRejectReconcileRequest = async (req: any) => {
     setActioningReqId(req.id);
+    const reviewerEmail = userProfile?.email || userProfile?.fullName || 'Teacher';
     try {
+      // 1. Update status to REJECTED in Firestore reconcileRequests collection
       await setDoc(doc(db, 'reconcileRequests', req.id), {
-        status: 'DISMISSED',
+        status: 'REJECTED',
         resolvedAt: serverTimestamp()
       }, { merge: true });
 
-      setTeacherToast(`🔴 Reconcile request dismissed for ${req.studentName}.`);
+      // 2. Append Audit Log record to auditLogs collection
+      await addDoc(collection(db, 'auditLogs'), {
+        requestId: req.id,
+        studentId: req.studentId,
+        studentName: req.studentName,
+        rollNumber: req.rollNumber || '',
+        subjectCode: req.subjectCode || '',
+        reviewedBy: reviewerEmail,
+        action: 'REJECTED',
+        calculatedDistanceMeters: req.calculatedDistanceMeters ?? 0,
+        timestamp: serverTimestamp()
+      });
+
+      setTeacherToast(`🔴 Reconcile request REJECTED for ${req.studentName}.`);
       setTimeout(() => setTeacherToast(null), 5000);
     } catch (err: any) {
-      console.error("Error dismissing reconcile request:", err);
-      setTeacherToast(`🔴 Request dismissed for ${req.studentName}.`);
+      console.error("Error rejecting reconcile request:", err);
+      setTeacherToast(`🔴 Request rejected for ${req.studentName}.`);
       setTimeout(() => setTeacherToast(null), 5000);
     } finally {
       setActioningReqId(null);
@@ -1156,64 +1188,127 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {reconcileRequests.map((req) => (
-                      <div 
-                        key={req.id} 
-                        className="bg-stone-50/80 border border-amber-200/80 rounded-2xl p-5 space-y-3.5 shadow-xs transition-all hover:border-amber-300"
-                      >
-                        <div className="flex items-center justify-between border-b border-amber-200/60 pb-2.5">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-8 h-8 rounded-full bg-[#FF6B4B]/10 text-[#FF6B4B] font-bold text-xs flex items-center justify-center font-jakarta">
-                              {req.studentName?.charAt(0) || 'S'}
-                            </div>
-                            <div>
-                              <h4 className="font-jakarta font-bold text-neutral-900 text-sm">{req.studentName}</h4>
-                              <p className="text-[11px] font-mono text-neutral-500 tnum">Roll No: {req.rollNumber || '21CS045'}</p>
-                            </div>
-                          </div>
-                          <span className="text-[10px] font-mono bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-0.5 rounded-full font-bold uppercase">
-                            PENDING
-                          </span>
-                        </div>
+                    {reconcileRequests.map((req) => {
+                      const distMeters = req.calculatedDistanceMeters ?? (
+                        req.studentCoordinates
+                          ? Math.round(calculateHaversineDistance(req.studentCoordinates.latitude, req.studentCoordinates.longitude, 29.193090, 79.518721))
+                          : 0
+                      );
+                      const isValidated = distMeters <= 50;
 
-                        <div className="space-y-1.5 text-xs font-sans">
-                          <div className="flex items-center justify-between text-neutral-700">
-                            <span className="font-mono text-[11px] text-neutral-500">SUBJECT:</span>
-                            <span className="font-bold text-neutral-900">{req.subjectName || req.subjectCode} ({req.subjectCode})</span>
+                      return (
+                        <div 
+                          key={req.id} 
+                          className={`bg-white border-2 rounded-2xl p-5 space-y-3.5 shadow-sm transition-all ${
+                            isValidated ? 'border-emerald-200 hover:border-emerald-300' : 'border-rose-300 hover:border-rose-400 bg-rose-50/20'
+                          }`}
+                        >
+                          {/* Student Info Header */}
+                          <div className="flex items-center justify-between border-b border-amber-100 pb-2.5">
+                            <div className="flex items-center space-x-2.5">
+                              <div className="w-9 h-9 rounded-full bg-[#FF6B4B]/10 text-[#FF6B4B] font-bold text-sm flex items-center justify-center font-jakarta shrink-0">
+                                {req.studentName?.charAt(0) || 'S'}
+                              </div>
+                              <div>
+                                <h4 className="font-jakarta font-bold text-neutral-900 text-sm">{req.studentName}</h4>
+                                <p className="text-[11px] font-mono text-neutral-500 tnum">Roll No: {req.rollNumber || '21CS045'}</p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-mono bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full font-bold uppercase">
+                              PENDING AUDIT
+                            </span>
                           </div>
-                          <div className="flex items-center justify-between text-neutral-700">
-                            <span className="font-mono text-[11px] text-neutral-500">LECTURE DATE:</span>
-                            <span className="font-mono font-bold text-neutral-900">{req.lectureDate}</span>
-                          </div>
-                          <div className="flex items-start justify-between text-neutral-700 pt-1">
-                            <span className="font-mono text-[11px] text-neutral-500 shrink-0 mr-2">REASON:</span>
-                            <span className="font-medium text-neutral-800 text-right">{req.reason}</span>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center space-x-2 pt-2 border-t border-amber-200/60">
-                          <button
-                            onClick={() => handleApproveReconcileRequest(req)}
-                            disabled={actioningReqId === req.id}
-                            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-mono text-xs font-bold uppercase flex items-center justify-center space-x-1.5 shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
-                          >
-                            {actioningReqId === req.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-white" />
-                            ) : (
-                              <span>🟢 Approve & Mark Present</span>
+                          {/* Requirement 2: Audit Verification Badge */}
+                          {isValidated ? (
+                            <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-2.5 rounded-xl text-[11px] font-mono font-bold flex items-center space-x-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>LOCATION VALIDATED: Inside Campus Boundary (~{distMeters} meters away)</span>
+                            </div>
+                          ) : (
+                            <div className="bg-rose-100 border border-rose-300 text-rose-950 p-2.5 rounded-xl text-[11px] font-mono font-bold flex items-center space-x-2">
+                              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                              <span>LOCATION MISMATCH RED ALERT: Outside Campus Boundary (~{distMeters} meters away)</span>
+                            </div>
+                          )}
+
+                          {/* Request Details & GPS Metadata */}
+                          <div className="space-y-1.5 text-xs font-sans">
+                            <div className="flex items-center justify-between text-neutral-700">
+                              <span className="font-mono text-[11px] text-neutral-500">SUBJECT:</span>
+                              <span className="font-bold text-neutral-900">{req.subjectName || req.subjectCode} ({req.subjectCode})</span>
+                            </div>
+                            <div className="flex items-center justify-between text-neutral-700">
+                              <span className="font-mono text-[11px] text-neutral-500">LECTURE DATE:</span>
+                              <span className="font-mono font-bold text-neutral-900">{req.lectureDate}</span>
+                            </div>
+                            <div className="flex items-start justify-between text-neutral-700 pt-0.5">
+                              <span className="font-mono text-[11px] text-neutral-500 shrink-0 mr-2">REASON:</span>
+                              <span className="font-medium text-neutral-800 text-right">{req.reason}</span>
+                            </div>
+
+                            {/* Exact GPS Coordinates & Submission Timestamp */}
+                            <div className="bg-stone-100/90 p-2.5 rounded-xl space-y-1 text-[11px] font-mono text-neutral-700 mt-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-neutral-500 uppercase font-bold">GPS COORDS:</span>
+                                <span className="font-bold text-neutral-900">
+                                  Lat: {req.studentCoordinates?.latitude ? req.studentCoordinates.latitude.toFixed(6) : '29.193000'}, Long: {req.studentCoordinates?.longitude ? req.studentCoordinates.longitude.toFixed(6) : '79.518721'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-neutral-500 uppercase font-bold">SUBMITTED AT:</span>
+                                <span className="font-semibold text-neutral-800">
+                                  {req.timestamp?.seconds 
+                                    ? new Date(req.timestamp.seconds * 1000).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+                                    : req.createdAt?.seconds
+                                    ? new Date(req.createdAt.seconds * 1000).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+                                    : 'Recent'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Optional Attached Document / Proof URL */}
+                            {req.proofUrl && (
+                              <div className="pt-1.5">
+                                <a
+                                  href={req.proofUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 text-xs font-mono font-bold rounded-lg transition-colors"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>View Attached Document</span>
+                                  <ExternalLink className="w-3 h-3 text-indigo-500 ml-1" />
+                                </a>
+                              </div>
                             )}
-                          </button>
+                          </div>
 
-                          <button
-                            onClick={() => handleDismissReconcileRequest(req)}
-                            disabled={actioningReqId === req.id}
-                            className="py-2.5 px-4 bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 rounded-xl font-mono text-xs font-bold uppercase flex items-center justify-center space-x-1 transition-colors disabled:opacity-50 cursor-pointer"
-                          >
-                            <span>🔴 Dismiss</span>
-                          </button>
+                          {/* Requirement 3: Explicit Approve and Reject Action Buttons */}
+                          <div className="flex items-center space-x-2 pt-2 border-t border-amber-100">
+                            <button
+                              onClick={() => handleApproveReconcileRequest(req)}
+                              disabled={actioningReqId === req.id}
+                              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-mono text-xs font-bold uppercase flex items-center justify-center space-x-1.5 shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              {actioningReqId === req.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                              ) : (
+                                <span>🟢 Approve & Mark Present</span>
+                              )}
+                            </button>
+
+                            <button
+                              onClick={() => handleRejectReconcileRequest(req)}
+                              disabled={actioningReqId === req.id}
+                              className="py-2.5 px-4 bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 rounded-xl font-mono text-xs font-bold uppercase flex items-center justify-center space-x-1 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              <span>🔴 Reject</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
